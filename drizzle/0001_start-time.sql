@@ -1,0 +1,1 @@
+ALTER TABLE "game_night" ADD COLUMN "start_time" text;

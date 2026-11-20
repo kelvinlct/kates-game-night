@@ -7,6 +7,7 @@ import { answerAttempt, booking, gameNight, user } from "@/db/schema"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
 import { cleanName } from "@/lib/names"
+import { defaultStartTime, parseStartTime } from "@/lib/start-time"
 import {
   WRONG_ANSWER_WINDOW_MS,
   checkSecurityAnswer,
@@ -124,12 +125,17 @@ async function requireAdminViewer() {
   return viewer
 }
 
-export async function setNightOpen(date: string, open: boolean): Promise<ActionResult> {
+export async function setNightOpen(
+  date: string,
+  open: boolean,
+  startTime?: string,
+): Promise<ActionResult> {
   try {
     if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
     if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
     const db = getDb()
     if (open) {
+      const requested = parseStartTime(startTime)
       await db
         .insert(gameNight)
         .values({
@@ -137,10 +143,11 @@ export async function setNightOpen(date: string, open: boolean): Promise<ActionR
           date,
           isOpen: true,
           capacity: DEFAULT_CAPACITY,
+          startTime: requested ?? defaultStartTime(date),
         })
         .onConflictDoUpdate({
           target: gameNight.date,
-          set: { isOpen: true },
+          set: requested ? { isOpen: true, startTime: requested } : { isOpen: true },
         })
     } else {
       await db.update(gameNight).set({ isOpen: false }).where(eq(gameNight.date, date))
@@ -167,6 +174,27 @@ export async function setNightCapacity(date: string, capacity: number): Promise<
       .returning({ id: gameNight.id })
     if (updated.length === 0) {
       return { ok: false, error: "Open the night before setting a capacity." }
+    }
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function setNightStartTime(date: string, startTime: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    const parsed = parseStartTime(startTime)
+    if (!parsed) return { ok: false, error: "Enter a start time." }
+    const updated = await getDb()
+      .update(gameNight)
+      .set({ startTime: parsed })
+      .where(eq(gameNight.date, date))
+      .returning({ id: gameNight.id })
+    if (updated.length === 0) {
+      return { ok: false, error: "Open the night before setting a start time." }
     }
     refresh()
     return { ok: true }

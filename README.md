@@ -122,6 +122,7 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 - The same logged-in user cannot book a night twice. Guests are not tied to an account, so the name they type is what the list shows (first name on the calendar dialog).
 - A wrong security answer is stored by IP. Five failures in an hour lock that IP for the rest of the hour. The limit lives in `answer_attempt`, so it works across serverless instances. Any comma-separated value in `SECURITY_ANSWER` is accepted.
 - Capacity defaults to 4, including Kate. Admins can set it from 1 to 20. A capacity of 1 is already full.
+- An open night starts at 7:00pm on weekdays and 2:30pm on Saturday and Sunday, Toronto local time. Admins can change that time. It is stored as `HH:mm` on the date.
 - Every admin mutation checks the session email against `ADMIN_EMAILS`. The verified flag is set only by an admin. Email and password sign-in is disabled on the server.
 
 ## Scripts
