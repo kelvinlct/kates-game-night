@@ -100,6 +100,8 @@ export const booking = pgTable(
       .references(() => gameNight.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
     name: text("name").notNull(),
+    /** SHA-256 hex of the guest's httpOnly cookie. Null for signed-in bookings. */
+    guestTokenHash: text("guest_token_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

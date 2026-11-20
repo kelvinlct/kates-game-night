@@ -3,7 +3,8 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { isAdminEmail } from "@/lib/admin"
 import { getAuth } from "@/lib/auth"
-import type { BookMode, Viewer } from "@/lib/types"
+import { bookModeFor } from "@/lib/join"
+import type { Viewer } from "@/lib/types"
 
 export const getViewer = cache(async (): Promise<Viewer | null> => {
   // Await the request headers before touching the database. During
@@ -25,11 +26,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   }
 })
 
-export function bookModeFor(viewer: Viewer | null): BookMode {
-  if (!viewer) return "guest"
-  if (viewer.verified || viewer.isAdmin) return "one-click"
-  return "answer"
-}
+export { bookModeFor }
 
 export async function requireAdmin(): Promise<Viewer> {
   const viewer = await getViewer()

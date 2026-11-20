@@ -1,12 +1,19 @@
 "use server"
 
+import { randomBytes } from "node:crypto"
 import { and, eq, gt, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { headers } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { getDb } from "@/db"
 import { answerAttempt, booking, gameNight, user } from "@/db/schema"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
+import {
+  GUEST_COOKIE,
+  canRemoveOwnBooking,
+  hashGuestToken,
+  shouldMarkVerified,
+} from "@/lib/join"
 import { cleanName, displayName } from "@/lib/names"
 import { getAuth } from "@/lib/auth"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
@@ -53,13 +60,15 @@ export async function bookSpot(
     if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
 
     const viewer = await getViewer()
-    const needsAnswer = !viewer || (!viewer.verified && !viewer.isAdmin)
-    const submitted = cleanName(String(formData.get("name") ?? ""))
-    const name = needsAnswer
-      ? submitted
-      : cleanName(viewer?.name ?? "") ?? submitted
-    if (!name) return { ok: false, error: "Add your name." }
+    const needsAnswer = !viewer || !viewer.verified
+    const name = viewer
+      ? displayName(viewer.name)
+      : cleanName(String(formData.get("name") ?? ""))
+    if (!name) {
+      return { ok: false, error: viewer ? "Update your name in the header first." : "Add your name." }
+    }
 
+    let answerCorrect = false
     if (needsAnswer) {
       const answer = String(formData.get("answer") ?? "")
       if (!answer.trim()) return { ok: false, error: "Enter Kate's last name." }
@@ -67,11 +76,19 @@ export async function bookSpot(
       if (isRateLimited(await recentFailures(ip))) {
         return { ok: false, error: "Too many tries. Wait an hour and try again." }
       }
-      if (!checkSecurityAnswer(answer)) {
+      answerCorrect = checkSecurityAnswer(answer)
+      if (!answerCorrect) {
         await recordFailure(ip)
         return { ok: false, error: "That's not the right answer." }
       }
     }
+
+    const markVerified = shouldMarkVerified({
+      signedIn: Boolean(viewer),
+      alreadyVerified: Boolean(viewer?.verified),
+      answerCorrect,
+    })
+    const guest = viewer ? null : await guestCredential()
 
     const today = todayInToronto()
     const result = await getDb().transaction(async (tx) => {
@@ -95,30 +112,64 @@ export async function bookSpot(
         .where(eq(booking.gameNightId, night.id))
 
       if (viewer && existing.some((item) => item.userId === viewer.id)) {
-        return { ok: false as const, error: "You're already booked for this night." }
+        return { ok: false as const, error: "You're already in." }
       }
       if (isFull(night.capacity, existing.length)) {
         return { ok: false as const, error: "That night is full." }
+      }
+
+      if (markVerified && viewer) {
+        await tx.update(user).set({ verified: true }).where(eq(user.id, viewer.id))
       }
 
       await tx.insert(booking).values({
         id: crypto.randomUUID(),
         gameNightId: night.id,
         userId: viewer?.id ?? null,
+        guestTokenHash: guest?.hash ?? null,
         name,
       })
       return { ok: true as const }
     })
 
-    if (result.ok) refresh()
+    if (result.ok) {
+      if (guest?.fresh) await rememberGuest(guest.token)
+      refresh()
+    }
     return result
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? error.code : null
     if (code === "23505") {
-      return { ok: false, error: "You're already booked for this night." }
+      return { ok: false, error: "You're already in." }
     }
     return failure(error)
   }
+}
+
+async function guestCredential(): Promise<{ token: string; hash: string; fresh: boolean }> {
+  const jar = await cookies()
+  const existing = jar.get(GUEST_COOKIE)?.value
+  if (existing && existing.length >= 32) {
+    return { token: existing, hash: hashGuestToken(existing), fresh: false }
+  }
+  const token = randomBytes(32).toString("base64url")
+  return { token, hash: hashGuestToken(token), fresh: true }
+}
+
+async function rememberGuest(token: string) {
+  const jar = await cookies()
+  jar.set(GUEST_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 400,
+  })
+}
+
+async function presentedGuestHash(): Promise<string | null> {
+  const token = (await cookies()).get(GUEST_COOKIE)?.value
+  return token ? hashGuestToken(token) : null
 }
 
 async function requireAdminViewer() {
@@ -215,6 +266,35 @@ export async function setNightStartTime(date: string, startTime: string): Promis
     if (updated.length === 0) {
       return { ok: false, error: "Open the night before setting a start time." }
     }
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function removeOwnBooking(bookingId: string): Promise<ActionResult> {
+  try {
+    if (!bookingId) return { ok: false, error: "Missing spot." }
+    const viewer = await getViewer()
+    const [row] = await getDb()
+      .select({
+        id: booking.id,
+        userId: booking.userId,
+        guestTokenHash: booking.guestTokenHash,
+      })
+      .from(booking)
+      .where(eq(booking.id, bookingId))
+      .limit(1)
+    if (!row) return { ok: false, error: "That spot is already gone." }
+    const allowed = canRemoveOwnBooking({
+      bookingUserId: row.userId,
+      viewerId: viewer?.id ?? null,
+      storedTokenHash: row.guestTokenHash,
+      presentedTokenHash: await presentedGuestHash(),
+    })
+    if (!allowed) return { ok: false, error: "You can't remove that." }
+    await getDb().delete(booking).where(eq(booking.id, bookingId))
     refresh()
     return { ok: true }
   } catch (error) {

@@ -28,8 +28,8 @@ export default function Home({
       </Suspense>
       <Legend />
       <p className="mt-3 max-w-xl text-xs text-muted-foreground">
-        Kate holds seat 1, so an open night with nobody else booked shows 1/4. Gray nights are
-        closed. You can book without an account.
+        Kate holds seat 1, so an open night with nobody else in shows 1/4. Gray nights are closed.
+        You can join without an account.
       </p>
     </SiteFrame>
   )

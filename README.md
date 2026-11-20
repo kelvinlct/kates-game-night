@@ -119,7 +119,7 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 
 - Closed nights and past nights (before today in Toronto) reject bookings.
 - A transaction takes `FOR UPDATE` on the night row, then inserts only if a seat is left, so two people cannot take the last seat.
-- The same logged-in user cannot book a night twice. Guests are not tied to an account, so the name they type is what the list shows (first name on the calendar dialog).
+- The same logged-in user cannot join a night twice. Their booking uses their display name. Guests type a name, and that browser can remove their own spot. A signed-in person who is not verified answers Kate's last name once; a right answer marks them verified, and after that they join in one click.
 - A wrong security answer is stored by IP. Five failures in an hour lock that IP for the rest of the hour. The limit lives in `answer_attempt`, so it works across serverless instances. Any comma-separated value in `SECURITY_ANSWER` is accepted.
 - Capacity defaults to 4, including Kate. Admins can set it from 1 to 20. A capacity of 1 is already full.
 - An open night starts at 7:00pm on weekdays and 2:30pm on Saturday and Sunday, Toronto local time. Admins can change that time. It is stored as `HH:mm` on the date.

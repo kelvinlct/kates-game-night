@@ -20,7 +20,7 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: "Kate's Game Night",
-  description: "Book a seat at Kate's board game night.",
+  description: "Join Kate's board game night.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
