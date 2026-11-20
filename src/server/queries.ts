@@ -19,6 +19,7 @@ import {
 import { cookies } from "next/headers"
 import { canRemoveOwnBooking, hashGuestToken, GUEST_COOKIE } from "@/lib/join"
 import { firstName, shownBookingName } from "@/lib/names"
+import { DEFAULT_GAME, gameLabel } from "@/lib/game"
 import { defaultStartTime, effectiveStartTime, formatStartTime } from "@/lib/start-time"
 import { bookModeFor } from "@/server/session"
 import type { AdminUser, DayView, Viewer } from "@/lib/types"
@@ -37,6 +38,7 @@ type StoredNight = {
   isOpen: boolean
   capacity: number
   startTime: string | null
+  game: string
   bookings: StoredBooking[]
 }
 
@@ -57,6 +59,7 @@ function placeholder(date: string, today: string): DayView {
     label: null,
     startTime: defaultStartForPlaceholder(date),
     timeLabel: null,
+    game: DEFAULT_GAME,
     bookings: [],
     viewerBooked: false,
   }
@@ -87,6 +90,7 @@ function toDayView(
     label: status === "closed" ? null : countLabel(capacity, guestCount),
     startTime,
     timeLabel: status === "closed" ? null : formatStartTime(startTime),
+    game: gameLabel(night?.game),
     bookings: (night?.bookings ?? []).map((item) => {
       const name = shownBookingName(item.name, item.userId ? item.userName : null)
       return {
@@ -117,6 +121,7 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
       isOpen: gameNight.isOpen,
       capacity: gameNight.capacity,
       startTime: gameNight.startTime,
+      game: gameNight.game,
       bookingId: booking.id,
       bookingName: booking.name,
       bookingUserId: booking.userId,
@@ -140,6 +145,7 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
         isOpen: row.isOpen,
         capacity: row.capacity,
         startTime: row.startTime,
+        game: row.game,
         bookings: [],
       }
       nights.set(row.date, night)

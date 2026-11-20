@@ -62,15 +62,15 @@ export function MonthGrid({
             <tr key={week[0].date}>
               {week.map((day) => {
                 const interactive = day.inMonth && (day.status !== "closed" || isAdmin)
-                const className = `flex h-16 w-full flex-col items-start rounded-lg p-1.5 text-left sm:h-24 sm:p-2 ${cellClass(day)} ${
-                  day.isToday ? "ring-2 ring-foreground" : ""
+                const className = `flex h-16 w-full flex-col items-start overflow-hidden rounded-lg p-1.5 text-left sm:h-24 sm:p-2 ${cellClass(day)} ${
+                  day.isToday ? "ring-2 ring-foreground ring-inset" : ""
                 }`
                 return (
                   <td key={day.date} className="p-0 align-top">
                     {interactive ? (
                       <button
                         type="button"
-                        className={`${className} min-h-20 sm:min-h-24`}
+                        className={className}
                         aria-label={labelFor(day)}
                         aria-current={day.isToday ? "date" : undefined}
                         onClick={() => setSelected(day.date)}
@@ -114,13 +114,13 @@ function DayBody({ day }: { day: DayView }) {
         <span className="mt-auto text-[10px] tracking-wide uppercase">Closed</span>
       ) : null}
       {day.inMonth && day.status === "open" ? (
-        <span className="mt-auto text-sm font-semibold leading-none">{day.label}</span>
-      ) : null}
-      {day.inMonth && day.timeLabel ? (
-        <span className="text-[10px] leading-tight">{day.timeLabel}</span>
+        <span className="mt-auto truncate text-sm leading-none font-semibold">{day.label}</span>
       ) : null}
       {day.inMonth && day.status === "full" ? (
-        <span className="text-[10px] leading-tight">Game confirmed</span>
+        <>
+          <span className="mt-auto truncate text-sm leading-none font-semibold">{day.label}</span>
+          <span className="truncate text-[10px] leading-none">Game confirmed</span>
+        </>
       ) : null}
     </>
   )
