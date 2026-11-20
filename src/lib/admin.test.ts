@@ -26,8 +26,13 @@ describe("admin emails", () => {
     expect(isAdminEmail(null, "kate@example.com")).toBe(false)
     expect(isAdminEmail("", "kate@example.com")).toBe(false)
     expect(isAdminEmail("kate@example.com", "")).toBe(false)
-    expect(isAdminEmail("kate@example.com", undefined)).toBe(false)
+    expect(isAdminEmail("kate@example.com", null)).toBe(false)
     expect(isAdminEmail("kate@example.com", ", ,")).toBe(false)
+  })
+
+  it("rejects everyone when ADMIN_EMAILS is unset", () => {
+    delete process.env.ADMIN_EMAILS
+    expect(isAdminEmail("kate@example.com")).toBe(false)
   })
 
   it("reads ADMIN_EMAILS from the environment", () => {
