@@ -1,4 +1,4 @@
-export const DEFAULT_GAME = "Undecided"
+export const DEFAULT_GAME = "TBD"
 export const GAME_MAX = 80
 
 /** Blank input stays the default. Anything longer than 80 characters is rejected. */
@@ -11,4 +11,9 @@ export function parseGame(value: unknown): string | null {
 
 export function gameLabel(stored: string | null | undefined): string {
   return parseGame(stored) ?? DEFAULT_GAME
+}
+
+/** Shown in the day dialog. Admin inputs keep the bare name. */
+export function displayGame(name: string): string {
+  return `Game: ${name}`
 }

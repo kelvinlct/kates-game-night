@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react"
 import { spotsLeft } from "@/lib/capacity"
+import { displayGame } from "@/lib/game"
 import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
@@ -69,7 +70,9 @@ export function BookingDialog({
           <DialogTitle className="font-heading text-xl">
             {formatNightHeading(day.date, day.timeLabel)}
           </DialogTitle>
-          {day.status !== "closed" ? <p className="text-sm text-foreground">{day.game}</p> : null}
+          {day.status !== "closed" ? (
+            <p className="text-sm text-foreground">{displayGame(day.game)}</p>
+          ) : null}
           <DialogDescription>
             {day.label ? `${day.label}. ` : ""}
             {statusLine(day)}
@@ -85,40 +88,36 @@ export function BookingDialog({
               <span>{HOST_NAME}</span>
               <span className="text-xs text-muted-foreground">host</span>
             </li>
-            {day.bookings.length === 0 ? (
-              <li className="text-sm text-muted-foreground">Nobody else yet.</li>
-            ) : (
-              day.bookings.map((person) => (
-                <li key={person.id} className="flex items-center justify-between gap-3 text-sm">
-                  <span>
-                    {person.firstName}
-                    {isAdmin && person.name && person.name !== person.firstName ? (
-                      <span className="text-muted-foreground"> · {person.name}</span>
-                    ) : null}
-                  </span>
-                  {person.canRemove ? (
-                    <button
-                      type="button"
-                      className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
-                      disabled={busy}
-                      onClick={() => run(() => removeOwnBooking(person.id))}
-                    >
-                      Remove me
-                    </button>
+            {day.bookings.map((person) => (
+              <li key={person.id} className="flex items-center justify-between gap-3 text-sm">
+                <span>
+                  {person.firstName}
+                  {isAdmin && person.name && person.name !== person.firstName ? (
+                    <span className="text-muted-foreground"> · {person.name}</span>
                   ) : null}
-                  {isAdmin && !person.canRemove ? (
-                    <button
-                      type="button"
-                      className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
-                      disabled={busy}
-                      onClick={() => run(() => removeBooking(person.id))}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </li>
-              ))
-            )}
+                </span>
+                {person.canRemove ? (
+                  <button
+                    type="button"
+                    className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
+                    disabled={busy}
+                    onClick={() => run(() => removeOwnBooking(person.id))}
+                  >
+                    Remove me
+                  </button>
+                ) : null}
+                {isAdmin && !person.canRemove ? (
+                  <button
+                    type="button"
+                    className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
+                    disabled={busy}
+                    onClick={() => run(() => removeBooking(person.id))}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </li>
+            ))}
           </ul>
         </div>
 
