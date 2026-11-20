@@ -19,7 +19,7 @@ Screenshots are from a local Postgres, with a few nights opened by hand. The boo
 ## Stack
 
 - Next.js App Router, TypeScript, Tailwind CSS, shadcn/ui
-- Better Auth: email and password, plus Google when the client id and secret are set
+- Better Auth: Google sign-in only. Guest booking does not need an account.
 - Neon Postgres in production, via `@neondatabase/serverless` (WebSocket pool, so a booking can lock the night row)
 - Drizzle ORM and SQL migrations in `drizzle/`
 - A local Postgres URL uses `node-postgres` instead, with the same transaction API
@@ -44,7 +44,8 @@ BETTER_AUTH_SECRET=
 BETTER_AUTH_URL=http://localhost:3000
 ADMIN_EMAILS=kate@example.com
 SECURITY_ANSWER=Smith,李
-# leave blank to hide the Google button
+# Required to sign in. Without both, /login says sign-in isn't configured.
+# The app still builds.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 ```
@@ -58,7 +59,7 @@ npm run dev
 
 Open http://localhost:3000. `GET /api/auth/ok` returns `{"ok":true}` when auth is mounted.
 
-Sign up, then add that email to `ADMIN_EMAILS` and restart the dev server if you changed the env. Open a night from the calendar (admins can click a gray day) or from `/admin`. Guests book with the security answer. After you mark someone **Verified**, their next booking skips the question.
+Sign in with Google, then add that email to `ADMIN_EMAILS` and restart the dev server if you changed the env. Open a night from the calendar (admins can click a gray day) or from `/admin`. Guests still book with a name and the security answer, with no account. After you mark someone **Verified**, their next booking skips the question. An older password account is not a separate login: Google sign-in with the same email links to that user.
 
 ## Production setup
 
@@ -79,7 +80,7 @@ That applies `drizzle/0000_init.sql` (auth tables, `game_night`, `booking`, and 
 
 ### 2. Google sign-in
 
-Skip this if you only want email and password. The app builds and hides the Google button when either variable is missing.
+Accounts sign in with Google. The app still builds if the client id or secret is missing, and `/login` then says sign-in isn't configured. Guest booking keeps working.
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create or pick a project.
 2. **APIs & Services → OAuth consent screen**. Fill in the app name and support email. Add the scopes `openid`, `email`, and `profile` if asked. **Publish** the app so it leaves Testing. While it is in Testing, only listed test users can sign in, and refresh tokens expire after 7 days.
@@ -112,7 +113,7 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 
 3. Leave `BETTER_AUTH_URL` unset for Preview if you use preview deployments. Better Auth then uses the request host. Google will not work on a preview URL unless that exact callback is registered.
 4. Deploy. A production build runs `npm run vercel-build`: when `VERCEL_ENV` is `production` and `DATABASE_URL` or `POSTGRES_URL` is set, it applies the Drizzle migrations, then runs `next build`. Preview builds, local `npm run build`, and a build with no database URL skip the migration and still compile. Run `npm run db:migrate` yourself for a local or preview database.
-5. Open the production URL, create Kate's account, and confirm `/admin` loads for an address in `ADMIN_EMAILS`.
+5. Open the production URL, sign in with Google, and confirm `/admin` loads for an address in `ADMIN_EMAILS`.
 
 ## Rules the app enforces
 
@@ -121,7 +122,7 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 - The same logged-in user cannot book a night twice. Guests are not tied to an account, so the name they type is what the list shows (first name on the calendar dialog).
 - A wrong security answer is stored by IP. Five failures in an hour lock that IP for the rest of the hour. The limit lives in `answer_attempt`, so it works across serverless instances. Any comma-separated value in `SECURITY_ANSWER` is accepted.
 - Capacity defaults to 4, including Kate. Admins can set it from 1 to 20. A capacity of 1 is already full.
-- Every admin mutation checks the session email against `ADMIN_EMAILS` again. The verified flag cannot be set from the signup form.
+- Every admin mutation checks the session email against `ADMIN_EMAILS`. The verified flag is set only by an admin. Email and password sign-in is disabled on the server.
 
 ## Scripts
 
