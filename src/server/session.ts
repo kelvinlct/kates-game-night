@@ -28,9 +28,9 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
 
 export { bookModeFor }
 
-export async function requireAdmin(): Promise<Viewer> {
+export async function requireAdmin(nextPath = "/admin"): Promise<Viewer> {
   const viewer = await getViewer()
-  if (!viewer) redirect("/login?next=/admin")
+  if (!viewer) redirect(`/login?next=${encodeURIComponent(nextPath)}`)
   if (!viewer.isAdmin) redirect("/")
   return viewer
 }
