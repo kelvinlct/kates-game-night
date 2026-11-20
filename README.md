@@ -130,6 +130,7 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 - An open night starts at 7:00pm on weekdays and 2:30pm on Saturday and Sunday, Toronto local time. The time shows in the day detail, not on the month grid. Admins can also name the board game for that night. It defaults to TBD.
 - Every admin mutation checks the session email against `ADMIN_EMAILS`. The verified flag is set only by an admin. Email and password sign-in is disabled on the server.
 - Joins and removals are appended to `booking_event` and shown to admins at `/admin/history` (latest 200). The same helper emails `ADMIN_EMAILS` through Gmail. If `GMAIL_USER` or `GMAIL_APP_PASSWORD` is unset, the email is skipped and the booking still succeeds.
+- From the day dialog, an admin can join themselves without the last-name question, add a registered person (their email is shown so two similar names stay distinct), or type a 1–40 character name for someone without an account. That typed name is a guest booking with no removal cookie. A full or closed night still refuses the seat. History records it as joined, added by that admin.
 
 ## Scripts
 

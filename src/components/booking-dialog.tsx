@@ -6,6 +6,8 @@ import { displayGame } from "@/lib/game"
 import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
+import { AdminAdd } from "@/components/admin-add"
+import type { DirectoryUser } from "@/lib/admin-add"
 import { bookSpot, removeBooking, removeOwnBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,6 +37,7 @@ export function BookingDialog({
   bookMode,
   viewerName,
   isAdmin,
+  directory = [],
 }: {
   day: DayView
   open: boolean
@@ -42,8 +45,11 @@ export function BookingDialog({
   bookMode: BookMode
   viewerName: string | null
   isAdmin: boolean
+  directory?: DirectoryUser[]
 }) {
   const canBook = day.inMonth && day.status === "open" && !day.isPast && !day.viewerBooked
+  const canAdminAdd = isAdmin && day.inMonth && !day.isPast && day.status !== "closed"
+  const askAnswer = !isAdmin && bookMode !== "one-click"
   const [state, action, pending] = useActionState(bookSpot, null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, startTransition] = useTransition()
@@ -139,7 +145,7 @@ export function BookingDialog({
                 />
               </div>
             ) : null}
-            {bookMode !== "one-click" ? (
+            {askAnswer ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="security-answer">What is Kate&apos;s last name?</Label>
                 <Input
@@ -160,6 +166,14 @@ export function BookingDialog({
               {pending ? "Joining…" : "JOIN!"}
             </Button>
           </form>
+        ) : null}
+
+        {canAdminAdd ? (
+          <AdminAdd
+            date={day.date}
+            users={directory}
+            bookedUserIds={day.bookings.flatMap((person) => (person.userId ? [person.userId] : []))}
+          />
         ) : null}
 
         {isAdmin ? (

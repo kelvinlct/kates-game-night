@@ -24,6 +24,7 @@ describe("verify on a correct answer", () => {
     expect(bookModeFor(null)).toBe("guest")
     expect(bookModeFor({ verified: false })).toBe("answer")
     expect(bookModeFor({ verified: true })).toBe("one-click")
+    expect(bookModeFor({ verified: false, isAdmin: true })).toBe("one-click")
   })
 })
 

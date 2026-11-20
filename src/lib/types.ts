@@ -15,6 +15,8 @@ export type PublicBooking = {
   firstName: string
   /** Full name is included only for admins. */
   name?: string
+  /** Account id, included only for admins so a person is not added twice. */
+  userId?: string | null
   /** This browser or signed-in user can take this row off the list. */
   canRemove: boolean
 }

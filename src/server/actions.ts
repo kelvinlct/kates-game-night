@@ -7,6 +7,7 @@ import { cookies, headers } from "next/headers"
 import { getDb } from "@/db"
 import { answerAttempt, booking, gameNight, user } from "@/db/schema"
 import { recordBookingEvent } from "@/server/booking-events"
+import { adminAddBlock } from "@/lib/admin-add"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
 import {
@@ -25,6 +26,7 @@ import {
   isRateLimited,
 } from "@/lib/security"
 import type { ActionResult } from "@/lib/types"
+import type { PersonKind } from "@/lib/history"
 import { clientIp, getViewer } from "@/server/session"
 
 function refresh() {
@@ -63,7 +65,7 @@ export async function bookSpot(
     if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
 
     const viewer = await getViewer()
-    const needsAnswer = !viewer || !viewer.verified
+    const needsAnswer = !viewer?.isAdmin && (!viewer || !viewer.verified)
     const name = viewer
       ? displayName(viewer.name)
       : cleanName(String(formData.get("name") ?? ""))
@@ -202,6 +204,108 @@ export async function updateDisplayName(name: string): Promise<ActionResult> {
     })
     refresh()
     return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+async function commitAdminAdd(input: {
+  date: string
+  admin: { id: string; name: string; email: string }
+  name: string
+  userId: string | null
+  personKind: PersonKind
+}): Promise<ActionResult> {
+  const today = todayInToronto()
+  const actorName = displayName(input.admin.name) ?? input.admin.email
+  const result = await getDb().transaction(async (tx) => {
+    const [night] = await tx
+      .select()
+      .from(gameNight)
+      .where(eq(gameNight.date, input.date))
+      .for("update")
+      .limit(1)
+
+    const existing = night
+      ? await tx
+          .select({ id: booking.id, userId: booking.userId })
+          .from(booking)
+          .where(eq(booking.gameNightId, night.id))
+      : []
+    const block = adminAddBlock({
+      open: Boolean(night?.isOpen),
+      past: night ? isPastDate(night.date, today) : false,
+      full: night ? isFull(night.capacity, existing.length) : false,
+      duplicateUser: Boolean(input.userId && existing.some((item) => item.userId === input.userId)),
+    })
+    if (block || !night) {
+      return { ok: false as const, error: block ?? "That night is closed." }
+    }
+
+    await tx.insert(booking).values({
+      id: crypto.randomUUID(),
+      gameNightId: night.id,
+      userId: input.userId,
+      guestTokenHash: null,
+      name: input.name,
+    })
+    await recordBookingEvent(tx, {
+      action: "joined",
+      nightDate: night.date,
+      personName: input.name,
+      personKind: input.personKind,
+      personUserId: input.userId,
+      actorName,
+      actorUserId: input.admin.id,
+    })
+    return { ok: true as const }
+  })
+  if (result.ok) refresh()
+  return result
+}
+
+export async function addRegisteredUser(date: string, userId: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminViewer()
+    if (!admin) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    if (!userId) return { ok: false, error: "Pick someone." }
+    const [person] = await getDb()
+      .select({ id: user.id, name: user.name })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1)
+    if (!person) return { ok: false, error: "That person isn't registered." }
+    const name = displayName(person.name)
+    if (!name) return { ok: false, error: "That account has no usable name." }
+    return await commitAdminAdd({
+      date,
+      admin,
+      name,
+      userId: person.id,
+      personKind: "signed-in",
+    })
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : null
+    if (code === "23505") return { ok: false, error: "They're already in." }
+    return failure(error)
+  }
+}
+
+export async function addGuestName(date: string, rawName: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminViewer()
+    if (!admin) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    const name = displayName(rawName)
+    if (!name) return { ok: false, error: "Use 1 to 40 characters." }
+    return await commitAdminAdd({
+      date,
+      admin,
+      name,
+      userId: null,
+      personKind: "guest",
+    })
   } catch (error) {
     return failure(error)
   }
