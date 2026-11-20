@@ -113,6 +113,28 @@ export const booking = pgTable(
   ],
 )
 
+/**
+ * Append-only log of joins and removals. Rows are never updated or deleted.
+ * The night date is copied so the line still makes sense if the night changes.
+ */
+export const bookingEvent = pgTable(
+  "booking_event",
+  {
+    id: text("id").primaryKey(),
+    action: text("action").notNull(),
+    nightDate: date("night_date", { mode: "string" }).notNull(),
+    personName: text("person_name").notNull(),
+    /** "signed-in" or "guest". */
+    personKind: text("person_kind").notNull(),
+    personUserId: text("person_user_id"),
+    /** Set when an admin removes someone else. Null for a join or a self-removal. */
+    actorName: text("actor_name"),
+    actorUserId: text("actor_user_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("booking_event_created_idx").on(table.createdAt)],
+)
+
 export const answerAttempt = pgTable(
   "answer_attempt",
   {

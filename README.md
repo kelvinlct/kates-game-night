@@ -48,6 +48,9 @@ SECURITY_ANSWER=Smith,李
 # The app still builds.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# Optional. Join/remove mail is skipped when either is empty.
+GMAIL_USER=
+GMAIL_APP_PASSWORD=
 ```
 
 Create the tables and start the app:
@@ -108,7 +111,9 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 | `BETTER_AUTH_URL` | `https://<prod-domain>` with no trailing slash |
 | `GOOGLE_CLIENT_ID` | From the OAuth client, or leave unset |
 | `GOOGLE_CLIENT_SECRET` | From the OAuth client, or leave unset |
-| `ADMIN_EMAILS` | Comma-separated admin emails, for example `kate@example.com` |
+| `ADMIN_EMAILS` | Comma-separated admin emails, for example `kate@example.com`. These addresses also receive join and removal mail. |
+| `GMAIL_USER` | Gmail address that sends the notices. Leave unset to skip email. |
+| `GMAIL_APP_PASSWORD` | Google app password for that account. SMTP is `smtp.gmail.com` port 465. Leave unset to skip email. |
 | `SECURITY_ANSWER` | One or more accepted last names, comma-separated, for example `Smith,李`. Never put this in a `NEXT_PUBLIC_` variable. |
 
 3. Leave `BETTER_AUTH_URL` unset for Preview if you use preview deployments. Better Auth then uses the request host. Google will not work on a preview URL unless that exact callback is registered.
@@ -124,6 +129,7 @@ Replace `<prod-domain>` with the Vercel domain, for example `kates-game-night.ve
 - Capacity defaults to 4, including Kate. Admins can set it from 1 to 20. A capacity of 1 is already full.
 - An open night starts at 7:00pm on weekdays and 2:30pm on Saturday and Sunday, Toronto local time. The time shows in the day detail, not on the month grid. Admins can also name the board game for that night. It defaults to TBD.
 - Every admin mutation checks the session email against `ADMIN_EMAILS`. The verified flag is set only by an admin. Email and password sign-in is disabled on the server.
+- Joins and removals are appended to `booking_event` and shown to admins at `/admin/history` (latest 200). The same helper emails `ADMIN_EMAILS` through Gmail. If `GMAIL_USER` or `GMAIL_APP_PASSWORD` is unset, the email is skipped and the booking still succeeds.
 
 ## Scripts
 

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { cookies, headers } from "next/headers"
 import { getDb } from "@/db"
 import { answerAttempt, booking, gameNight, user } from "@/db/schema"
+import { recordBookingEvent } from "@/server/booking-events"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
 import {
@@ -29,6 +30,7 @@ import { clientIp, getViewer } from "@/server/session"
 function refresh() {
   revalidatePath("/")
   revalidatePath("/admin")
+  revalidatePath("/admin/history")
 }
 
 function failure(error: unknown): ActionResult {
@@ -129,6 +131,15 @@ export async function bookSpot(
         userId: viewer?.id ?? null,
         guestTokenHash: guest?.hash ?? null,
         name,
+      })
+      await recordBookingEvent(tx, {
+        action: "joined",
+        nightDate: night.date,
+        personName: name,
+        personKind: viewer ? "signed-in" : "guest",
+        personUserId: viewer?.id ?? null,
+        actorName: null,
+        actorUserId: null,
       })
       return { ok: true as const }
     })
@@ -300,26 +311,42 @@ export async function removeOwnBooking(bookingId: string): Promise<ActionResult>
   try {
     if (!bookingId) return { ok: false, error: "Missing spot." }
     const viewer = await getViewer()
-    const [row] = await getDb()
-      .select({
-        id: booking.id,
-        userId: booking.userId,
-        guestTokenHash: booking.guestTokenHash,
+    const guestHash = await presentedGuestHash()
+    const result = await getDb().transaction(async (tx) => {
+      const [row] = await tx
+        .select({
+          id: booking.id,
+          userId: booking.userId,
+          name: booking.name,
+          guestTokenHash: booking.guestTokenHash,
+          nightDate: gameNight.date,
+        })
+        .from(booking)
+        .innerJoin(gameNight, eq(booking.gameNightId, gameNight.id))
+        .where(eq(booking.id, bookingId))
+        .limit(1)
+      if (!row) return { ok: false as const, error: "That spot is already gone." }
+      const allowed = canRemoveOwnBooking({
+        bookingUserId: row.userId,
+        viewerId: viewer?.id ?? null,
+        storedTokenHash: row.guestTokenHash,
+        presentedTokenHash: guestHash,
       })
-      .from(booking)
-      .where(eq(booking.id, bookingId))
-      .limit(1)
-    if (!row) return { ok: false, error: "That spot is already gone." }
-    const allowed = canRemoveOwnBooking({
-      bookingUserId: row.userId,
-      viewerId: viewer?.id ?? null,
-      storedTokenHash: row.guestTokenHash,
-      presentedTokenHash: await presentedGuestHash(),
+      if (!allowed) return { ok: false as const, error: "You can't remove that." }
+      await tx.delete(booking).where(eq(booking.id, bookingId))
+      await recordBookingEvent(tx, {
+        action: "removed",
+        nightDate: row.nightDate,
+        personName: row.name,
+        personKind: row.userId ? "signed-in" : "guest",
+        personUserId: row.userId,
+        actorName: null,
+        actorUserId: null,
+      })
+      return { ok: true as const }
     })
-    if (!allowed) return { ok: false, error: "You can't remove that." }
-    await getDb().delete(booking).where(eq(booking.id, bookingId))
-    refresh()
-    return { ok: true }
+    if (result.ok) refresh()
+    return result
   } catch (error) {
     return failure(error)
   }
@@ -327,11 +354,36 @@ export async function removeOwnBooking(bookingId: string): Promise<ActionResult>
 
 export async function removeBooking(bookingId: string): Promise<ActionResult> {
   try {
-    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    const admin = await requireAdminViewer()
+    if (!admin) return { ok: false, error: "You can't do that." }
     if (!bookingId) return { ok: false, error: "Missing booking." }
-    await getDb().delete(booking).where(eq(booking.id, bookingId))
-    refresh()
-    return { ok: true }
+    const result = await getDb().transaction(async (tx) => {
+      const [row] = await tx
+        .select({
+          id: booking.id,
+          userId: booking.userId,
+          name: booking.name,
+          nightDate: gameNight.date,
+        })
+        .from(booking)
+        .innerJoin(gameNight, eq(booking.gameNightId, gameNight.id))
+        .where(eq(booking.id, bookingId))
+        .limit(1)
+      if (!row) return { ok: false as const, error: "That spot is already gone." }
+      await tx.delete(booking).where(eq(booking.id, bookingId))
+      await recordBookingEvent(tx, {
+        action: "removed",
+        nightDate: row.nightDate,
+        personName: row.name,
+        personKind: row.userId ? "signed-in" : "guest",
+        personUserId: row.userId,
+        actorName: admin.name,
+        actorUserId: admin.id,
+      })
+      return { ok: true as const }
+    })
+    if (result.ok) refresh()
+    return result
   } catch (error) {
     return failure(error)
   }

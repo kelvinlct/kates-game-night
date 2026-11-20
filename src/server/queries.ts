@@ -1,6 +1,6 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm"
+import { and, asc, desc, eq, gte, lte } from "drizzle-orm"
 import { getDb } from "@/db"
-import { booking, gameNight, user } from "@/db/schema"
+import { booking, bookingEvent, gameNight, user } from "@/db/schema"
 import {
   DEFAULT_CAPACITY,
   countLabel,
@@ -20,6 +20,14 @@ import { cookies } from "next/headers"
 import { canRemoveOwnBooking, hashGuestToken, GUEST_COOKIE } from "@/lib/join"
 import { firstName, shownBookingName } from "@/lib/names"
 import { DEFAULT_GAME, gameLabel } from "@/lib/game"
+import {
+  HISTORY_LIMIT,
+  actionLabel,
+  formatTorontoTimestamp,
+  kindLabel,
+  type BookingAction,
+  type PersonKind,
+} from "@/lib/history"
 import { defaultStartTime, effectiveStartTime, formatStartTime } from "@/lib/start-time"
 import { bookModeFor } from "@/server/session"
 import type { AdminUser, DayView, Viewer } from "@/lib/types"
@@ -196,6 +204,50 @@ export async function listUsers(): Promise<AdminUser[]> {
     .from(user)
     .orderBy(asc(user.name))
   return rows
+}
+
+export type HistoryEntry = {
+  id: string
+  who: string
+  action: string
+  night: string
+  when: string
+}
+
+function asAction(value: string): BookingAction {
+  return value === "removed" ? "removed" : "joined"
+}
+
+function asKind(value: string): PersonKind {
+  return value === "guest" ? "guest" : "signed-in"
+}
+
+export async function listBookingHistory(limit = HISTORY_LIMIT): Promise<HistoryEntry[]> {
+  const rows = await getDb()
+    .select({
+      id: bookingEvent.id,
+      action: bookingEvent.action,
+      nightDate: bookingEvent.nightDate,
+      personName: bookingEvent.personName,
+      personKind: bookingEvent.personKind,
+      actorName: bookingEvent.actorName,
+      createdAt: bookingEvent.createdAt,
+    })
+    .from(bookingEvent)
+    .orderBy(desc(bookingEvent.createdAt))
+    .limit(limit)
+
+  return rows.map((row) => {
+    const action = asAction(row.action)
+    const kind = asKind(row.personKind)
+    return {
+      id: row.id,
+      who: `${row.personName} · ${kindLabel(kind)}`,
+      action: actionLabel({ action, actorName: row.actorName }),
+      night: formatLongDate(row.nightDate),
+      when: formatTorontoTimestamp(row.createdAt),
+    }
+  })
 }
 
 export { dayOfMonth, formatLongDate }
