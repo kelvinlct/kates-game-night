@@ -6,7 +6,9 @@ import { displayGame } from "@/lib/game"
 import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
-import { bookSpot, removeBooking, removeOwnBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
+import { AdminAdd } from "@/components/admin-add"
+import type { DirectoryUser } from "@/lib/admin-add"
+import { bookSpot, removeBooking, removeOwnBooking, renameGuestBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -35,6 +37,7 @@ export function BookingDialog({
   bookMode,
   viewerName,
   isAdmin,
+  directory = [],
 }: {
   day: DayView
   open: boolean
@@ -42,8 +45,11 @@ export function BookingDialog({
   bookMode: BookMode
   viewerName: string | null
   isAdmin: boolean
+  directory?: DirectoryUser[]
 }) {
   const canBook = day.inMonth && day.status === "open" && !day.isPast && !day.viewerBooked
+  const canAdminAdd = isAdmin && day.inMonth && !day.isPast && day.status !== "closed"
+  const askAnswer = !isAdmin && bookMode !== "one-click"
   const [state, action, pending] = useActionState(bookSpot, null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, startTransition] = useTransition()
@@ -96,6 +102,30 @@ export function BookingDialog({
                     <span className="text-muted-foreground"> · {person.name}</span>
                   ) : null}
                 </span>
+                {isAdmin && person.userId === null ? (
+                  <form
+                    className="flex items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      const name = String(new FormData(event.currentTarget).get("name") ?? "")
+                      run(() => renameGuestBooking(person.id, name))
+                    }}
+                  >
+                    <Input
+                      name="name"
+                      required
+                      maxLength={40}
+                      key={`${person.id}-${person.name ?? person.firstName}`}
+                      defaultValue={person.name ?? person.firstName}
+                      disabled={busy}
+                      aria-label={`Name for ${person.firstName}`}
+                      className="h-7 w-28"
+                    />
+                    <Button type="submit" size="sm" variant="outline" disabled={busy}>
+                      Save
+                    </Button>
+                  </form>
+                ) : null}
                 {person.canRemove ? (
                   <button
                     type="button"
@@ -139,7 +169,7 @@ export function BookingDialog({
                 />
               </div>
             ) : null}
-            {bookMode !== "one-click" ? (
+            {askAnswer ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="security-answer">What is Kate&apos;s last name?</Label>
                 <Input
@@ -160,6 +190,14 @@ export function BookingDialog({
               {pending ? "Joining…" : "JOIN!"}
             </Button>
           </form>
+        ) : null}
+
+        {canAdminAdd ? (
+          <AdminAdd
+            date={day.date}
+            users={directory}
+            bookedUserIds={day.bookings.flatMap((person) => (person.userId ? [person.userId] : []))}
+          />
         ) : null}
 
         {isAdmin ? (

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { WEEKDAYS, dayOfMonth, formatLongDate } from "@/lib/dates"
+import type { DirectoryUser } from "@/lib/admin-add"
 import type { BookMode, DayView } from "@/lib/types"
 import { BookingDialog } from "@/components/booking-dialog"
 
@@ -26,12 +27,14 @@ export function MonthGrid({
   bookMode,
   viewerName,
   isAdmin,
+  directory = [],
 }: {
   days: DayView[]
   monthLabel: string
   bookMode: BookMode
   viewerName: string | null
   isAdmin: boolean
+  directory?: DirectoryUser[]
 }) {
   const [selected, setSelected] = useState<string | null>(null)
   const selectedDay = days.find((day) => day.date === selected) ?? null
@@ -100,6 +103,7 @@ export function MonthGrid({
           bookMode={bookMode}
           viewerName={viewerName}
           isAdmin={isAdmin}
+          directory={directory}
         />
       ) : null}
     </>

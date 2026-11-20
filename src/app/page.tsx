@@ -7,7 +7,7 @@ import { MonthPager } from "@/components/month-pager"
 import { SiteFrame } from "@/components/site-frame"
 import { parseMonth, todayInToronto } from "@/lib/dates"
 import { firstQueryValue } from "@/lib/paths"
-import { getMonth } from "@/server/queries"
+import { getMonth, listUsers } from "@/server/queries"
 import { getViewer } from "@/server/session"
 
 export default function Home({
@@ -41,7 +41,10 @@ async function Calendar({
   const viewer = await getViewer()
   const today = todayInToronto()
   const { year, month } = parseMonth(firstQueryValue(params.month), today)
-  const data = await getMonth(year, month, viewer, today)
+  const [data, users] = await Promise.all([
+    getMonth(year, month, viewer, today),
+    viewer?.isAdmin ? listUsers() : Promise.resolve([]),
+  ])
   return (
     <div className="rounded-2xl bg-card p-3 ring-1 ring-foreground/10 sm:p-5">
       <MonthPager
@@ -55,6 +58,7 @@ async function Calendar({
         bookMode={data.bookMode}
         viewerName={data.viewerName}
         isAdmin={data.isAdmin}
+        directory={users.map(({ id, name, email }) => ({ id, name, email }))}
       />
     </div>
   )

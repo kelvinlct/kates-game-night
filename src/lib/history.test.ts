@@ -28,6 +28,7 @@ describe("booking history labels", () => {
 
   it("shows who removed someone when an admin did it", () => {
     expect(actionLabel(joined)).toBe("Joined")
+    expect(actionLabel({ action: "joined", actorName: "Kate" })).toBe("Joined, added by Kate")
     expect(actionLabel({ action: "removed", actorName: null })).toBe("Removed")
     expect(actionLabel({ action: "removed", actorName: "Kate" })).toBe("Removed by Kate")
   })
@@ -65,6 +66,15 @@ describe("booking email", () => {
     )
     expect(message.subject).toBe("[Kate's Game Night] Alex was removed from Fri, Nov 20")
     expect(message.text).toContain("Alex (guest) was removed from Friday, November 20 by Kate.")
+  })
+
+  it("notes when an admin added someone", () => {
+    const message = bookingEmailContent(
+      { ...joined, actorName: "Kate", actorUserId: "admin-1" },
+      "https://games.example/admin/history",
+    )
+    expect(message.subject).toBe("[Kate's Game Night] Alex joined Fri, Nov 20")
+    expect(message.text).toContain("Alex (signed in) joined Friday, November 20, added by Kate.")
   })
 
   it("prefers the configured site URL for the history link", () => {
