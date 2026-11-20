@@ -2,6 +2,7 @@ import { Suspense } from "react"
 import Link from "next/link"
 import { AuthForm } from "@/components/auth-form"
 import { SiteFrame } from "@/components/site-frame"
+import { oauthErrorMessage } from "@/lib/account-linking"
 import { isGoogleEnabled } from "@/lib/auth"
 import { firstQueryValue, safeNextPath } from "@/lib/paths"
 
@@ -32,5 +33,12 @@ async function LoginForm({
 }) {
   const params = await searchParams
   const nextPath = safeNextPath(firstQueryValue(params.next))
-  return <AuthForm mode="login" googleEnabled={isGoogleEnabled()} nextPath={nextPath} />
+  return (
+    <AuthForm
+      mode="login"
+      googleEnabled={isGoogleEnabled()}
+      nextPath={nextPath}
+      oauthError={oauthErrorMessage(firstQueryValue(params.error))}
+    />
+  )
 }

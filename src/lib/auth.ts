@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { nextCookies } from "better-auth/next-js"
+import { googleAccountLinking } from "@/lib/account-linking"
 import { authSchema } from "@/db/schema"
 import { getDb } from "@/db"
 
@@ -42,7 +43,17 @@ function createAuth() {
       requireEmailVerification: false,
       autoSignIn: true,
     },
+    account: {
+      accountLinking: {
+        enabled: googleAccountLinking.enabled,
+        trustedProviders: [...googleAccountLinking.trustedProviders],
+        requireLocalEmailVerified: googleAccountLinking.requireLocalEmailVerified,
+      },
+    },
     socialProviders: google,
+    onAPIError: {
+      errorURL: "/login",
+    },
     user: {
       additionalFields: {
         verified: {

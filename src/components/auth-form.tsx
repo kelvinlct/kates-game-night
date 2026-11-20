@@ -12,10 +12,12 @@ export function AuthForm({
   mode,
   googleEnabled,
   nextPath,
+  oauthError = null,
 }: {
   mode: "login" | "signup"
   googleEnabled: boolean
   nextPath: string
+  oauthError?: string | null
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -75,9 +77,9 @@ export function AuthForm({
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
         </div>
-        {error ? (
+        {error || oauthError ? (
           <p role="alert" className="text-sm text-destructive">
-            {error}
+            {error ?? oauthError}
           </p>
         ) : null}
         <Button type="submit" disabled={pending} className="h-10">
@@ -92,7 +94,11 @@ export function AuthForm({
           disabled={pending}
           onClick={() => {
             setPending(true)
-            void authClient.signIn.social({ provider: "google", callbackURL })
+            void authClient.signIn.social({
+              provider: "google",
+              callbackURL,
+              errorCallbackURL: `/login?next=${encodeURIComponent(callbackURL)}`,
+            })
           }}
         >
           Continue with Google
