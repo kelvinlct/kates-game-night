@@ -13,7 +13,7 @@ function cellClass(day: DayView): string {
 }
 
 function labelFor(day: DayView): string {
-  const when = formatLongDate(day.date)
+  const when = day.timeLabel ? `${formatLongDate(day.date)} at ${day.timeLabel}` : formatLongDate(day.date)
   if (!day.inMonth) return when
   if (day.status === "closed") return `${when}, closed`
   if (day.status === "full") return `${when}, ${day.label}, game confirmed`
@@ -70,7 +70,7 @@ export function MonthGrid({
                     {interactive ? (
                       <button
                         type="button"
-                        className={className}
+                        className={`${className} min-h-20 sm:min-h-24`}
                         aria-label={labelFor(day)}
                         aria-current={day.isToday ? "date" : undefined}
                         onClick={() => setSelected(day.date)}
@@ -114,13 +114,13 @@ function DayBody({ day }: { day: DayView }) {
         <span className="mt-auto text-[10px] tracking-wide uppercase">Closed</span>
       ) : null}
       {day.inMonth && day.status === "open" ? (
-        <span className="mt-auto text-sm font-semibold">{day.label}</span>
+        <span className="mt-auto text-sm font-semibold leading-none">{day.label}</span>
+      ) : null}
+      {day.inMonth && day.timeLabel ? (
+        <span className="text-[10px] leading-tight">{day.timeLabel}</span>
       ) : null}
       {day.inMonth && day.status === "full" ? (
-        <>
-          <span className="mt-auto text-sm font-semibold leading-none">{day.label}</span>
-          <span className="text-[10px] leading-tight">Game confirmed</span>
-        </>
+        <span className="text-[10px] leading-tight">Game confirmed</span>
       ) : null}
     </>
   )

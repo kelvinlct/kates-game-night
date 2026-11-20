@@ -16,18 +16,29 @@ import {
   monthRange,
   shiftMonth,
 } from "@/lib/dates"
-import { firstName } from "@/lib/names"
+import { firstName, shownBookingName } from "@/lib/names"
+import { defaultStartTime, effectiveStartTime, formatStartTime } from "@/lib/start-time"
 import { bookModeFor } from "@/server/session"
 import type { AdminUser, DayView, Viewer } from "@/lib/types"
 
-type StoredBooking = { id: string; name: string; userId: string | null }
+type StoredBooking = {
+  id: string
+  name: string
+  userId: string | null
+  userName: string | null
+}
 
 type StoredNight = {
   id: string
   date: string
   isOpen: boolean
   capacity: number
+  startTime: string | null
   bookings: StoredBooking[]
+}
+
+function defaultStartForPlaceholder(date: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? defaultStartTime(date) : "19:00"
 }
 
 function placeholder(date: string, today: string): DayView {
@@ -41,6 +52,8 @@ function placeholder(date: string, today: string): DayView {
     capacity: DEFAULT_CAPACITY,
     guestCount: 0,
     label: null,
+    startTime: defaultStartForPlaceholder(date),
+    timeLabel: null,
     bookings: [],
     viewerBooked: false,
   }
@@ -57,6 +70,7 @@ function toDayView(
   const capacity = night?.capacity ?? DEFAULT_CAPACITY
   const open = Boolean(night?.isOpen)
   const status = statusFor(open, capacity, guestCount)
+  const startTime = effectiveStartTime(night?.startTime, date)
   return {
     date,
     inMonth,
@@ -67,11 +81,16 @@ function toDayView(
     capacity,
     guestCount,
     label: status === "closed" ? null : countLabel(capacity, guestCount),
-    bookings: (night?.bookings ?? []).map((item) => ({
-      id: item.id,
-      firstName: firstName(item.name),
-      ...(viewer?.isAdmin ? { name: item.name } : {}),
-    })),
+    startTime,
+    timeLabel: status === "closed" ? null : formatStartTime(startTime),
+    bookings: (night?.bookings ?? []).map((item) => {
+      const name = shownBookingName(item.name, item.userId ? item.userName : null)
+      return {
+        id: item.id,
+        firstName: firstName(name),
+        ...(viewer?.isAdmin ? { name } : {}),
+      }
+    }),
     viewerBooked: Boolean(
       viewer && night?.bookings.some((item) => item.userId === viewer.id),
     ),
@@ -87,13 +106,16 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
       date: gameNight.date,
       isOpen: gameNight.isOpen,
       capacity: gameNight.capacity,
+      startTime: gameNight.startTime,
       bookingId: booking.id,
       bookingName: booking.name,
       bookingUserId: booking.userId,
+      bookingUserName: user.name,
       bookingCreatedAt: booking.createdAt,
     })
     .from(gameNight)
     .leftJoin(booking, eq(booking.gameNightId, gameNight.id))
+    .leftJoin(user, eq(booking.userId, user.id))
     .where(and(gte(gameNight.date, from), lte(gameNight.date, to)))
     .orderBy(asc(gameNight.date), asc(booking.createdAt))
 
@@ -106,6 +128,7 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
         date: row.date,
         isOpen: row.isOpen,
         capacity: row.capacity,
+        startTime: row.startTime,
         bookings: [],
       }
       nights.set(row.date, night)
@@ -115,6 +138,7 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
         id: row.bookingId,
         name: row.bookingName,
         userId: row.bookingUserId,
+        userName: row.bookingUserName,
       })
     }
   }

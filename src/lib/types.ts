@@ -27,6 +27,10 @@ export type DayView = {
   capacity: number
   guestCount: number
   label: string | null
+  /** Effective HH:mm, stored value or the weekday/weekend default. */
+  startTime: string
+  /** Spoken label for open and full nights. Closed nights omit it. */
+  timeLabel: string | null
   bookings: PublicBooking[]
   viewerBooked: boolean
 }
