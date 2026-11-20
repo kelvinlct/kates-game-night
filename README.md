@@ -4,7 +4,7 @@ A small calendar for about ten friends to claim a seat at Kate's board game tabl
 
 The homepage is one month. Gray days are closed. Green days are open and show how many seats are taken, like `1/4`. A full night turns red, shows `4/4`, and says **Game confirmed**. Kate is always seat 1, so she is not stored as a booking: the count is `1 + guests`, and spots left are `capacity - 1 - guests`.
 
-Anyone can book. They type a name and answer "What is Kate's last name?". The answer is checked only on the server against `SECURITY_ANSWER`. That variable can list several accepted answers separated by commas, for example `Yuen,阮`. Each one is NFKC-normalized, trimmed, and compared case-insensitively. A verified account, or an admin, can book in one click. Admins are the emails in `ADMIN_EMAILS`.
+Anyone can book. They type a name and answer "What is Kate's last name?". The answer is checked only on the server against `SECURITY_ANSWER`. That variable can list several accepted answers separated by commas. Each one is NFKC-normalized, trimmed, and compared case-insensitively. A verified account, or an admin, can book in one click. Admins are the emails in `ADMIN_EMAILS`.
 
 Dates are plain calendar dates in `America/Toronto`, stored as `YYYY-MM-DD`, so a late evening does not slip into the next day.
 
