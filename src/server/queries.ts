@@ -16,6 +16,8 @@ import {
   monthRange,
   shiftMonth,
 } from "@/lib/dates"
+import { cookies } from "next/headers"
+import { canRemoveOwnBooking, hashGuestToken, GUEST_COOKIE } from "@/lib/join"
 import { firstName, shownBookingName } from "@/lib/names"
 import { defaultStartTime, effectiveStartTime, formatStartTime } from "@/lib/start-time"
 import { bookModeFor } from "@/server/session"
@@ -26,6 +28,7 @@ type StoredBooking = {
   name: string
   userId: string | null
   userName: string | null
+  guestTokenHash: string | null
 }
 
 type StoredNight = {
@@ -64,6 +67,7 @@ function toDayView(
   night: StoredNight | undefined,
   today: string,
   viewer: Viewer | null,
+  guestHash: string | null,
   inMonth: boolean,
 ): DayView {
   const guestCount = night?.bookings.length ?? 0
@@ -88,6 +92,12 @@ function toDayView(
       return {
         id: item.id,
         firstName: firstName(name),
+        canRemove: canRemoveOwnBooking({
+          bookingUserId: item.userId,
+          viewerId: viewer?.id ?? null,
+          storedTokenHash: item.guestTokenHash,
+          presentedTokenHash: guestHash,
+        }),
         ...(viewer?.isAdmin ? { name } : {}),
       }
     }),
@@ -111,6 +121,7 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
       bookingName: booking.name,
       bookingUserId: booking.userId,
       bookingUserName: user.name,
+      guestTokenHash: booking.guestTokenHash,
       bookingCreatedAt: booking.createdAt,
     })
     .from(gameNight)
@@ -139,13 +150,16 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
         name: row.bookingName,
         userId: row.bookingUserId,
         userName: row.bookingUserName,
+        guestTokenHash: row.guestTokenHash,
       })
     }
   }
 
+  const guestToken = (await cookies()).get(GUEST_COOKIE)?.value
+  const guestHash = guestToken ? hashGuestToken(guestToken) : null
   const days = monthGrid(year, month).map((cell) => {
     if (!cell.inMonth) return { ...placeholder(cell.date, today), date: cell.date }
-    return toDayView(cell.date, nights.get(cell.date), today, viewer, true)
+    return toDayView(cell.date, nights.get(cell.date), today, viewer, guestHash, true)
   })
 
   const previous = shiftMonth(year, month, -1)

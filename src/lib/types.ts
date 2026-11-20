@@ -15,6 +15,8 @@ export type PublicBooking = {
   firstName: string
   /** Full name is included only for admins. */
   name?: string
+  /** This browser or signed-in user can take this row off the list. */
+  canRemove: boolean
 }
 
 export type DayView = {

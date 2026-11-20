@@ -5,7 +5,7 @@ import { spotsLeft } from "@/lib/capacity"
 import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
-import { bookSpot, removeBooking, setNightCapacity, setNightOpen, setNightStartTime } from "@/server/actions"
+import { bookSpot, removeBooking, removeOwnBooking, setNightCapacity, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -21,7 +21,7 @@ import { Switch } from "@/components/ui/switch"
 function statusLine(day: DayView): string {
   if (day.status === "closed") return "Closed. No game this night."
   if (day.isPast) return "This night has passed."
-  if (day.viewerBooked) return "You're on the list."
+  if (day.viewerBooked) return "You're in."
   if (day.status === "full") return "Game confirmed."
   const left = Math.max(0, spotsLeft(day.capacity, day.guestCount))
   return left === 1 ? "1 spot left." : `${left} spots left.`
@@ -95,7 +95,17 @@ export function BookingDialog({
                       <span className="text-muted-foreground"> · {person.name}</span>
                     ) : null}
                   </span>
-                  {isAdmin ? (
+                  {person.canRemove ? (
+                    <button
+                      type="button"
+                      className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
+                      disabled={busy}
+                      onClick={() => run(() => removeOwnBooking(person.id))}
+                    >
+                      Remove me
+                    </button>
+                  ) : null}
+                  {isAdmin && !person.canRemove ? (
                     <button
                       type="button"
                       className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
@@ -111,13 +121,11 @@ export function BookingDialog({
           </ul>
         </div>
 
-        {state?.ok ? <p className="text-sm text-primary">You&apos;re booked.</p> : null}
+        {state?.ok ? <p className="text-sm text-primary">You&apos;re in!</p> : null}
         {canBook && !state?.ok ? (
           <form action={action} className="flex flex-col gap-3">
             <input type="hidden" name="date" value={day.date} />
-            {bookMode === "one-click" ? (
-              <input type="hidden" name="name" value={viewerName ?? ""} />
-            ) : (
+            {bookMode === "guest" ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="guest-name">Your name</Label>
                 <Input
@@ -130,7 +138,7 @@ export function BookingDialog({
                   autoComplete="given-name"
                 />
               </div>
-            )}
+            ) : null}
             {bookMode !== "one-click" ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="security-answer">What is Kate&apos;s last name?</Label>
@@ -149,7 +157,7 @@ export function BookingDialog({
               </p>
             ) : null}
             <Button type="submit" disabled={pending} className="h-10">
-              {pending ? "Booking…" : bookMode === "one-click" ? "Book my spot" : "Book a spot"}
+              {pending ? "Joining…" : "JOIN!"}
             </Button>
           </form>
         ) : null}

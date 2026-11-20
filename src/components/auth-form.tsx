@@ -20,7 +20,7 @@ export function AuthForm({
     <div className="mx-auto w-full max-w-sm rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
       <h1 className="font-heading text-2xl tracking-tight">Sign in</h1>
       <p className="mt-1 mb-5 text-sm text-muted-foreground">
-        Friends can book without an account. Sign in with Google if you want a saved login.
+        Friends can join without an account. Sign in with Google if you want a saved name.
       </p>
       {oauthError ? (
         <p role="alert" className="mb-4 text-sm text-destructive">

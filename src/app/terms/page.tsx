@@ -19,7 +19,7 @@ export default function TermsPage() {
       </p>
       <LegalSection title="Be nice">
         <p>
-          Book a seat you actually want, use your own name, and don&apos;t try to break the site or
+          Join a night you actually want, use your own name, and don&apos;t try to break the site or
           guess your way past the security question.
         </p>
       </LegalSection>
