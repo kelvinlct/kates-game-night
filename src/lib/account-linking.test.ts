@@ -54,7 +54,8 @@ describe("OAuth error copy", () => {
   it("turns the raw link error into a sentence and hides unknown codes", () => {
     expect(oauthErrorMessage(null)).toBeNull()
     expect(oauthErrorMessage("")).toBeNull()
-    expect(oauthErrorMessage("account_not_linked")).toMatch(/password login/i)
+    expect(oauthErrorMessage("account_not_linked")).toMatch(/already has a login/i)
+    expect(oauthErrorMessage("account_not_linked")).not.toMatch(/password/i)
     expect(oauthErrorMessage("account_not_linked")).not.toMatch(/account_not_linked/)
     expect(oauthErrorMessage("something_unexpected")).toMatch(/didn't work/i)
   })

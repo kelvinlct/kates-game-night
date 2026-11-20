@@ -35,7 +35,6 @@ async function LoginForm({
   const nextPath = safeNextPath(firstQueryValue(params.next))
   return (
     <AuthForm
-      mode="login"
       googleEnabled={isGoogleEnabled()}
       nextPath={nextPath}
       oauthError={oauthErrorMessage(firstQueryValue(params.error))}

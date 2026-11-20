@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { nextCookies } from "better-auth/next-js"
 import { googleAccountLinking } from "@/lib/account-linking"
+import { emailAndPasswordEnabled } from "@/lib/auth-mode"
 import { authSchema } from "@/db/schema"
 import { getDb } from "@/db"
 
@@ -39,9 +40,7 @@ function createAuth() {
       schema: authSchema,
     }),
     emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: false,
-      autoSignIn: true,
+      enabled: emailAndPasswordEnabled,
     },
     account: {
       accountLinking: {

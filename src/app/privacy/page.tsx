@@ -19,17 +19,24 @@ export default function PrivacyPage() {
       </p>
       <LegalSection title="What we collect">
         <ul className="list-disc pl-5">
-          <li>If you sign up with email and password: your name, email, and a password hash. We do not store the password itself.</li>
-          <li>If you sign in with Google: your name, email, and profile picture. We ask only for the basic profile, email, and openid scopes.</li>
+          <li>
+            Sign-in is with Google only. We store the name, email, and profile picture Google
+            sends. We ask only for the basic profile, email, and openid scopes. We do not ask for
+            or store a password.
+          </li>
           <li>A guest booking stores the name you type, the date, and the number of seats taken.</li>
           <li>
-            A wrong answer to the security question stores your IP address so we can slow down guessing. Records older than a day are deleted the next time someone gets the answer wrong.
+            A wrong answer to the security question stores your IP address so we can slow down
+            guessing. Records older than a day are deleted the next time someone gets the answer
+            wrong.
           </li>
         </ul>
       </LegalSection>
       <LegalSection title="How we use it">
         <p>
-          We use this only to run bookings and login. We do not sell it, share it, or show ads. We do not add analytics beyond the standard logs Vercel keeps for hosting. The site is hosted on Vercel. The database is Neon.
+          We use this only to run bookings and login. We do not sell it, share it, or show ads. We
+          do not add analytics beyond the standard logs Vercel keeps for hosting. The site is hosted
+          on Vercel. The database is Neon.
         </p>
       </LegalSection>
       <LegalSection title="Google user data">
@@ -41,7 +48,8 @@ export default function PrivacyPage() {
           >
             Google API Services User Data Policy
           </a>
-          , including the Limited Use requirements. We do not use Google data for advertising, and we do not sell it.
+          , including the Limited Use requirements. We do not use Google data for advertising, and
+          we do not sell it.
         </p>
       </LegalSection>
       <LegalSection title="Deletion">

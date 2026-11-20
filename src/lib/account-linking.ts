@@ -33,7 +33,7 @@ export function oauthErrorMessage(code: string | null | undefined): string | nul
   if (!code) return null
   switch (code) {
     case "account_not_linked":
-      return "That Google account uses the same email as a password login, but they aren't connected yet. Sign in with your password, or try Google again."
+      return "That Google account uses an email that already has a login, but they aren't connected yet. Try Google again."
     case "access_denied":
       return "Google sign-in was cancelled."
     case "unable_to_link_account":
@@ -41,6 +41,6 @@ export function oauthErrorMessage(code: string | null | undefined): string | nul
     case "account_already_linked_to_different_user":
       return "We couldn't connect that Google account to this login."
     default:
-      return "Google sign-in didn't work. Try again, or use your email and password."
+      return "Google sign-in didn't work. Try again."
   }
 }
