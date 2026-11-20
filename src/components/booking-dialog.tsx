@@ -5,7 +5,7 @@ import { spotsLeft } from "@/lib/capacity"
 import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
-import { bookSpot, removeBooking, removeOwnBooking, setNightCapacity, setNightOpen, setNightStartTime } from "@/server/actions"
+import { bookSpot, removeBooking, removeOwnBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -69,6 +69,7 @@ export function BookingDialog({
           <DialogTitle className="font-heading text-xl">
             {formatNightHeading(day.date, day.timeLabel)}
           </DialogTitle>
+          {day.status !== "closed" ? <p className="text-sm text-foreground">{day.game}</p> : null}
           <DialogDescription>
             {day.label ? `${day.label}. ` : ""}
             {statusLine(day)}
@@ -188,6 +189,29 @@ export function BookingDialog({
                   value={startTime}
                   disabled={busy}
                   onChange={(event) => setStartTime(event.target.value)}
+                />
+              </div>
+              <Button type="submit" variant="outline" disabled={!day.stored || busy}>
+                Save
+              </Button>
+            </form>
+            <form
+              className="flex items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const data = new FormData(event.currentTarget)
+                run(() => setNightGame(day.date, String(data.get("game") ?? "")))
+              }}
+            >
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="board-game">Board game</Label>
+                <Input
+                  id="board-game"
+                  name="game"
+                  maxLength={80}
+                  key={`${day.date}-${day.game}`}
+                  defaultValue={day.game}
+                  disabled={!day.stored || busy}
                 />
               </div>
               <Button type="submit" variant="outline" disabled={!day.stored || busy}>

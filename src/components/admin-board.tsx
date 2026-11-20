@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { formatLongDate } from "@/lib/dates"
 import type { ActionResult, AdminUser, DayView } from "@/lib/types"
-import { removeBooking, setNightCapacity, setNightOpen, setNightStartTime, setUserVerified } from "@/server/actions"
+import { removeBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime, setUserVerified } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -46,6 +46,7 @@ export function AdminBoard({ days, users }: { days: DayView[]; users: AdminUser[
                 <TableHead>Seats</TableHead>
                 <TableHead>Capacity</TableHead>
                 <TableHead>Starts</TableHead>
+                <TableHead>Board game</TableHead>
                 <TableHead>Bookings</TableHead>
               </TableRow>
             </TableHeader>
@@ -163,6 +164,29 @@ function NightRow({
             aria-label={`Start time for ${formatLongDate(day.date)}`}
             className="w-28"
             onChange={(event) => setStartTime(event.target.value)}
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={!day.stored || pending}>
+            Save
+          </Button>
+        </form>
+      </TableCell>
+      <TableCell>
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const data = new FormData(event.currentTarget)
+            run(() => setNightGame(day.date, String(data.get("game") ?? "")))
+          }}
+        >
+          <Input
+            name="game"
+            maxLength={80}
+            defaultValue={day.game}
+            key={`${day.date}-${day.game}`}
+            disabled={!day.stored || pending}
+            aria-label={`Board game for ${formatLongDate(day.date)}`}
+            className="w-36"
           />
           <Button type="submit" size="sm" variant="outline" disabled={!day.stored || pending}>
             Save

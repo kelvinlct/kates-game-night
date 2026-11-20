@@ -16,6 +16,7 @@ import {
 } from "@/lib/join"
 import { cleanName, displayName } from "@/lib/names"
 import { getAuth } from "@/lib/auth"
+import { DEFAULT_GAME, parseGame } from "@/lib/game"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
 import {
   WRONG_ANSWER_WINDOW_MS,
@@ -214,6 +215,7 @@ export async function setNightOpen(
           isOpen: true,
           capacity: DEFAULT_CAPACITY,
           startTime: requested ?? defaultStartTime(date),
+          game: DEFAULT_GAME,
         })
         .onConflictDoUpdate({
           target: gameNight.date,
@@ -265,6 +267,27 @@ export async function setNightStartTime(date: string, startTime: string): Promis
       .returning({ id: gameNight.id })
     if (updated.length === 0) {
       return { ok: false, error: "Open the night before setting a start time." }
+    }
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function setNightGame(date: string, game: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    const parsed = parseGame(game)
+    if (!parsed) return { ok: false, error: "Keep the game name to 80 characters." }
+    const updated = await getDb()
+      .update(gameNight)
+      .set({ game: parsed })
+      .where(eq(gameNight.date, date))
+      .returning({ id: gameNight.id })
+    if (updated.length === 0) {
+      return { ok: false, error: "Open the night before naming the game." }
     }
     refresh()
     return { ok: true }

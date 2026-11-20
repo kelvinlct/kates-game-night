@@ -33,6 +33,8 @@ export type DayView = {
   startTime: string
   /** Spoken label for open and full nights. Closed nights omit it. */
   timeLabel: string | null
+  /** What is being played. Defaults to Undecided. */
+  game: string
   bookings: PublicBooking[]
   viewerBooked: boolean
 }
