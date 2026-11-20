@@ -2,10 +2,10 @@
 
 import { useActionState, useState, useTransition } from "react"
 import { spotsLeft } from "@/lib/capacity"
-import { formatLongDate } from "@/lib/dates"
+import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
-import { bookSpot, removeBooking, setNightCapacity, setNightOpen } from "@/server/actions"
+import { bookSpot, removeBooking, setNightCapacity, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -46,6 +46,12 @@ export function BookingDialog({
   const [state, action, pending] = useActionState(bookSpot, null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, startTransition] = useTransition()
+  const [startTime, setStartTime] = useState(day.startTime)
+  const [trackedStart, setTrackedStart] = useState(day.startTime)
+  if (trackedStart !== day.startTime) {
+    setTrackedStart(day.startTime)
+    setStartTime(day.startTime)
+  }
 
   const prefilled = viewerName ? firstName(viewerName) : ""
 
@@ -60,7 +66,9 @@ export function BookingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-heading text-xl">{formatLongDate(day.date)}</DialogTitle>
+          <DialogTitle className="font-heading text-xl">
+            {formatNightHeading(day.date, day.timeLabel)}
+          </DialogTitle>
           <DialogDescription>
             {day.label ? `${day.label}. ` : ""}
             {statusLine(day)}
@@ -154,9 +162,30 @@ export function BookingDialog({
                 id="open-night"
                 checked={day.status !== "closed"}
                 disabled={busy}
-                onCheckedChange={(checked) => run(() => setNightOpen(day.date, checked))}
+                onCheckedChange={(checked) => run(() => setNightOpen(day.date, checked, startTime))}
               />
             </div>
+            <form
+              className="flex items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                run(() => setNightStartTime(day.date, startTime))
+              }}
+            >
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="start-time">Start time</Label>
+                <Input
+                  id="start-time"
+                  type="time"
+                  value={startTime}
+                  disabled={busy}
+                  onChange={(event) => setStartTime(event.target.value)}
+                />
+              </div>
+              <Button type="submit" variant="outline" disabled={!day.stored || busy}>
+                Save
+              </Button>
+            </form>
             <form
               className="flex items-end gap-2"
               onSubmit={(event) => {

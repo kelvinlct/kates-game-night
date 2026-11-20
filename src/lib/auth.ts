@@ -1,10 +1,13 @@
+import { eq } from "drizzle-orm"
 import { betterAuth } from "better-auth"
+import { APIError } from "better-auth/api"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { nextCookies } from "better-auth/next-js"
+import { booking, authSchema } from "@/db/schema"
+import { getDb } from "@/db"
 import { googleAccountLinking } from "@/lib/account-linking"
 import { emailAndPasswordEnabled } from "@/lib/auth-mode"
-import { authSchema } from "@/db/schema"
-import { getDb } from "@/db"
+import { displayName } from "@/lib/names"
 
 export function isGoogleEnabled(
   clientId = process.env.GOOGLE_CLIENT_ID,
@@ -60,6 +63,27 @@ function createAuth() {
           required: false,
           defaultValue: false,
           input: false,
+        },
+      },
+    },
+    databaseHooks: {
+      user: {
+        update: {
+          before: async (data) => {
+            if (typeof data.name !== "string") return
+            const cleaned = displayName(data.name)
+            if (!cleaned) {
+              throw new APIError("BAD_REQUEST", { message: "Use 1 to 40 characters." })
+            }
+            return { data: { ...data, name: cleaned } }
+          },
+          after: async (updated) => {
+            if (!updated.id || !updated.name) return
+            await getDb()
+              .update(booking)
+              .set({ name: updated.name })
+              .where(eq(booking.userId, updated.id))
+          },
         },
       },
     },

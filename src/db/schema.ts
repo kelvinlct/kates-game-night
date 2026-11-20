@@ -87,6 +87,8 @@ export const gameNight = pgTable("game_night", {
   date: date("date", { mode: "string" }).notNull().unique(),
   isOpen: boolean("is_open").notNull().default(false),
   capacity: integer("capacity").notNull().default(4),
+  /** Local time of day in America/Toronto, HH:mm. Null uses the weekday default. */
+  startTime: text("start_time"),
 })
 
 export const booking = pgTable(
