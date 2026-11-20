@@ -2,11 +2,13 @@
 
 import { and, eq, gt, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
 import { getDb } from "@/db"
 import { answerAttempt, booking, gameNight, user } from "@/db/schema"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
-import { cleanName } from "@/lib/names"
+import { cleanName, displayName } from "@/lib/names"
+import { getAuth } from "@/lib/auth"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
 import {
   WRONG_ANSWER_WINDOW_MS,
@@ -123,6 +125,23 @@ async function requireAdminViewer() {
   const viewer = await getViewer()
   if (!viewer?.isAdmin) return null
   return viewer
+}
+
+export async function updateDisplayName(name: string): Promise<ActionResult> {
+  try {
+    const viewer = await getViewer()
+    if (!viewer) return { ok: false, error: "Sign in first." }
+    const cleaned = displayName(name)
+    if (!cleaned) return { ok: false, error: "Use 1 to 40 characters." }
+    await getAuth().api.updateUser({
+      body: { name: cleaned },
+      headers: await headers(),
+    })
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
 }
 
 export async function setNightOpen(
