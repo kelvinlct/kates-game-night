@@ -4,6 +4,7 @@ import { drizzle as drizzleNode } from "drizzle-orm/node-postgres"
 import { Pool as PgPool } from "pg"
 import ws from "ws"
 import * as schema from "@/db/schema"
+import { databaseUrl } from "@/lib/database-url"
 
 export type AppDatabase = NeonDatabase<typeof schema>
 
@@ -36,7 +37,7 @@ function createDb(connectionString: string): AppDatabase {
 }
 
 export function getDb(): AppDatabase {
-  const connectionString = process.env.DATABASE_URL
+  const connectionString = databaseUrl()
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set")
   }

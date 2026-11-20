@@ -30,6 +30,22 @@ describe("security answer", () => {
     expect(answersMatch("Lau", undefined)).toBe(false)
     expect(answersMatch("Lau", null)).toBe(false)
     expect(answersMatch("Lau", "   ")).toBe(false)
+    expect(answersMatch("Lau", ", ,")).toBe(false)
+    expect(answersMatch("", "Lau")).toBe(false)
+  })
+
+  it("accepts any comma-separated answer, including a second script", () => {
+    const expected = " Yuen , 阮 "
+    expect(answersMatch("yuen", expected)).toBe(true)
+    expect(answersMatch("YUEN", expected)).toBe(true)
+    expect(answersMatch("  阮  ", expected)).toBe(true)
+    expect(answersMatch("Lau", expected)).toBe(false)
+  })
+
+  it("folds compatibility characters before comparing", () => {
+    expect(answersMatch("\uFF39\uFF55\uFF45\uFF4E", "Yuen")).toBe(true)
+    expect(answersMatch("Yuen", "Yuen\uFF0C\u962E")).toBe(true)
+    expect(answersMatch("e\u0301mile", "Émile")).toBe(true)
   })
 
   it("reads SECURITY_ANSWER on the server and nowhere else", () => {

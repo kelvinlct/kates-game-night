@@ -4,11 +4,23 @@ export const WRONG_ANSWER_LIMIT = 5
 export const WRONG_ANSWER_WINDOW_MS = 60 * 60 * 1000
 
 /**
- * The expected answer lives only in SECURITY_ANSWER.
+ * The expected answers live only in SECURITY_ANSWER.
  * Callers must never send that value to the browser.
+ *
+ * NFKC first so fullwidth letters and a fullwidth comma fold to ASCII,
+ * then trim and case-fold. Commas separate accepted answers (`Yuen,阮`).
  */
 export function normalizeAnswer(value: string): string {
-  return value.trim().toLowerCase()
+  return value.normalize("NFKC").trim().toLowerCase()
+}
+
+export function acceptedAnswers(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .normalize("NFKC")
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter((part) => part.length > 0)
 }
 
 function digest(value: string): Buffer {
@@ -16,18 +28,26 @@ function digest(value: string): Buffer {
 }
 
 /**
- * Trimmed, case-insensitive compare. Both sides are hashed so the
- * comparison stays constant-time even when the lengths differ.
+ * True when the provided answer matches any accepted candidate.
+ * Each candidate is hashed and compared with timingSafeEqual, and every
+ * candidate is compared even after a match.
  */
 export function answersMatch(
   provided: string,
   expected: string | null | undefined,
 ): boolean {
+  const candidates = acceptedAnswers(expected)
   const providedDigest = digest(normalizeAnswer(provided))
-  const expectedDigest = digest(normalizeAnswer(expected ?? ""))
-  const same = timingSafeEqual(providedDigest, expectedDigest)
-  const configured = Boolean(expected && expected.trim())
-  return configured && same
+  if (candidates.length === 0) {
+    timingSafeEqual(providedDigest, digest(""))
+    return false
+  }
+  let matched = false
+  for (const candidate of candidates) {
+    const same = timingSafeEqual(providedDigest, digest(candidate))
+    matched = matched || same
+  }
+  return matched
 }
 
 export function checkSecurityAnswer(
