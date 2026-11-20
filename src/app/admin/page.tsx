@@ -54,9 +54,14 @@ async function AdminContent({
             Open nights, set the table size, and mark friends as verified.
           </p>
         </div>
-        <Link href={`/?month=${data.monthKey}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
-          Back to calendar
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/history" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            History
+          </Link>
+          <Link href={`/?month=${data.monthKey}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Back to calendar
+          </Link>
+        </div>
       </div>
       <MonthPager
         label={data.label}
