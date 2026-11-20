@@ -3,10 +3,11 @@ import type { BookMode } from "@/lib/types"
 
 export const GUEST_COOKIE = "kates_guest"
 
-/** Verified accounts join in one click. Everyone else who is signed in answers once. */
-export function bookModeFor(viewer: { verified: boolean } | null): BookMode {
+/** Verified accounts, and admins, join in one click. Other signed-in people answer once. */
+export function bookModeFor(viewer: { verified: boolean; isAdmin?: boolean } | null): BookMode {
   if (!viewer) return "guest"
-  return viewer.verified ? "one-click" : "answer"
+  if (viewer.isAdmin || viewer.verified) return "one-click"
+  return "answer"
 }
 
 /** A correct answer from a signed-in, not-yet-verified person sets the admin verified flag. */

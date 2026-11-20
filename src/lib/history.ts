@@ -11,7 +11,7 @@ export type BookingEventDraft = {
   personName: string
   personKind: PersonKind
   personUserId: string | null
-  /** Admin who removed someone else. Null when the person joined or removed themselves. */
+  /** Admin who added or removed someone else. Null when the person joined or removed themselves. */
   actorName: string | null
   actorUserId: string | null
 }
@@ -29,7 +29,9 @@ export function whoLabel(name: string, kind: PersonKind): string {
 }
 
 export function actionLabel(event: Pick<BookingEventDraft, "action" | "actorName">): string {
-  if (event.action === "joined") return "Joined"
+  if (event.action === "joined") {
+    return event.actorName ? `Joined, added by ${event.actorName}` : "Joined"
+  }
   if (event.actorName) return `Removed by ${event.actorName}`
   return "Removed"
 }
@@ -78,7 +80,9 @@ export function bookingEmailContent(
   const who = `${notice.personName} (${kindLabel(notice.personKind)})`
   const longNight = formatLongDate(notice.nightDate)
   const sentence = joined
-    ? `${who} joined ${longNight}.`
+    ? notice.actorName
+      ? `${who} joined ${longNight}, added by ${notice.actorName}.`
+      : `${who} joined ${longNight}.`
     : notice.actorName
       ? `${who} was removed from ${longNight} by ${notice.actorName}.`
       : `${who} was removed from ${longNight}.`

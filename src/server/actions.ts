@@ -7,6 +7,7 @@ import { cookies, headers } from "next/headers"
 import { getDb } from "@/db"
 import { answerAttempt, booking, gameNight, user } from "@/db/schema"
 import { recordBookingEvent } from "@/server/booking-events"
+import { adminAddBlock } from "@/lib/admin-add"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
 import {
@@ -15,7 +16,7 @@ import {
   hashGuestToken,
   shouldMarkVerified,
 } from "@/lib/join"
-import { cleanName, displayName } from "@/lib/names"
+import { accountDisplayName, cleanName, displayName, guestBookingRename } from "@/lib/names"
 import { getAuth } from "@/lib/auth"
 import { DEFAULT_GAME, parseGame } from "@/lib/game"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
@@ -25,12 +26,14 @@ import {
   isRateLimited,
 } from "@/lib/security"
 import type { ActionResult } from "@/lib/types"
+import type { PersonKind } from "@/lib/history"
 import { clientIp, getViewer } from "@/server/session"
 
 function refresh() {
   revalidatePath("/")
   revalidatePath("/admin")
   revalidatePath("/admin/history")
+  revalidatePath("/admin/users")
 }
 
 function failure(error: unknown): ActionResult {
@@ -63,7 +66,7 @@ export async function bookSpot(
     if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
 
     const viewer = await getViewer()
-    const needsAnswer = !viewer || !viewer.verified
+    const needsAnswer = !viewer?.isAdmin && (!viewer || !viewer.verified)
     const name = viewer
       ? displayName(viewer.name)
       : cleanName(String(formData.get("name") ?? ""))
@@ -194,12 +197,157 @@ export async function updateDisplayName(name: string): Promise<ActionResult> {
   try {
     const viewer = await getViewer()
     if (!viewer) return { ok: false, error: "Sign in first." }
-    const cleaned = displayName(name)
-    if (!cleaned) return { ok: false, error: "Use 1 to 40 characters." }
+    const cleaned = accountDisplayName(name)
+    if (!cleaned.ok) return cleaned
     await getAuth().api.updateUser({
-      body: { name: cleaned },
+      body: { name: cleaned.name },
       headers: await headers(),
     })
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+async function commitAdminAdd(input: {
+  date: string
+  admin: { id: string; name: string; email: string }
+  name: string
+  userId: string | null
+  personKind: PersonKind
+}): Promise<ActionResult> {
+  const today = todayInToronto()
+  const actorName = displayName(input.admin.name) ?? input.admin.email
+  const result = await getDb().transaction(async (tx) => {
+    const [night] = await tx
+      .select()
+      .from(gameNight)
+      .where(eq(gameNight.date, input.date))
+      .for("update")
+      .limit(1)
+
+    const existing = night
+      ? await tx
+          .select({ id: booking.id, userId: booking.userId })
+          .from(booking)
+          .where(eq(booking.gameNightId, night.id))
+      : []
+    const block = adminAddBlock({
+      open: Boolean(night?.isOpen),
+      past: night ? isPastDate(night.date, today) : false,
+      full: night ? isFull(night.capacity, existing.length) : false,
+      duplicateUser: Boolean(input.userId && existing.some((item) => item.userId === input.userId)),
+    })
+    if (block || !night) {
+      return { ok: false as const, error: block ?? "That night is closed." }
+    }
+
+    await tx.insert(booking).values({
+      id: crypto.randomUUID(),
+      gameNightId: night.id,
+      userId: input.userId,
+      guestTokenHash: null,
+      name: input.name,
+    })
+    await recordBookingEvent(tx, {
+      action: "joined",
+      nightDate: night.date,
+      personName: input.name,
+      personKind: input.personKind,
+      personUserId: input.userId,
+      actorName,
+      actorUserId: input.admin.id,
+    })
+    return { ok: true as const }
+  })
+  if (result.ok) refresh()
+  return result
+}
+
+export async function addRegisteredUser(date: string, userId: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminViewer()
+    if (!admin) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    if (!userId) return { ok: false, error: "Pick someone." }
+    const [person] = await getDb()
+      .select({ id: user.id, name: user.name })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1)
+    if (!person) return { ok: false, error: "That person isn't registered." }
+    const name = displayName(person.name)
+    if (!name) return { ok: false, error: "That account has no usable name." }
+    return await commitAdminAdd({
+      date,
+      admin,
+      name,
+      userId: person.id,
+      personKind: "signed-in",
+    })
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error ? error.code : null
+    if (code === "23505") return { ok: false, error: "They're already in." }
+    return failure(error)
+  }
+}
+
+export async function addGuestName(date: string, rawName: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdminViewer()
+    if (!admin) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    const name = displayName(rawName)
+    if (!name) return { ok: false, error: "Use 1 to 40 characters." }
+    return await commitAdminAdd({
+      date,
+      admin,
+      name,
+      userId: null,
+      personKind: "guest",
+    })
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function setUserDisplayName(userId: string, rawName: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!userId) return { ok: false, error: "Missing user." }
+    const parsed = accountDisplayName(rawName)
+    if (!parsed.ok) return parsed
+    const result = await getDb().transaction(async (tx) => {
+      const updated = await tx
+        .update(user)
+        .set({ name: parsed.name })
+        .where(eq(user.id, userId))
+        .returning({ id: user.id })
+      if (updated.length === 0) return { ok: false as const, error: "That person isn't registered." }
+      await tx.update(booking).set({ name: parsed.name }).where(eq(booking.userId, userId))
+      return { ok: true as const }
+    })
+    if (result.ok) refresh()
+    return result
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function renameGuestBooking(bookingId: string, rawName: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!bookingId) return { ok: false, error: "Missing booking." }
+    const [row] = await getDb()
+      .select({ id: booking.id, userId: booking.userId })
+      .from(booking)
+      .where(eq(booking.id, bookingId))
+      .limit(1)
+    if (!row) return { ok: false, error: "That spot is already gone." }
+    const parsed = guestBookingRename(row.userId, rawName)
+    if (!parsed.ok) return parsed
+    await getDb().update(booking).set({ name: parsed.name }).where(eq(booking.id, bookingId))
     refresh()
     return { ok: true }
   } catch (error) {

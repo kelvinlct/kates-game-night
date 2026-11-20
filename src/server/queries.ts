@@ -110,7 +110,7 @@ function toDayView(
           storedTokenHash: item.guestTokenHash,
           presentedTokenHash: guestHash,
         }),
-        ...(viewer?.isAdmin ? { name } : {}),
+        ...(viewer?.isAdmin ? { name, userId: item.userId } : {}),
       }
     }),
     viewerBooked: Boolean(
