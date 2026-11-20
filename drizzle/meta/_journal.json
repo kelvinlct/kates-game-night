@@ -22,6 +22,13 @@
       "when": 1795211825630,
       "tag": "0002_guest-token",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795213372803,
+      "tag": "0003_board-game",
+      "breakpoints": true
     }
   ]
 }
