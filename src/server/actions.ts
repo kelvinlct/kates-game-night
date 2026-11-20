@@ -16,7 +16,7 @@ import {
   hashGuestToken,
   shouldMarkVerified,
 } from "@/lib/join"
-import { cleanName, displayName } from "@/lib/names"
+import { accountDisplayName, cleanName, displayName, guestBookingRename } from "@/lib/names"
 import { getAuth } from "@/lib/auth"
 import { DEFAULT_GAME, parseGame } from "@/lib/game"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
@@ -33,6 +33,7 @@ function refresh() {
   revalidatePath("/")
   revalidatePath("/admin")
   revalidatePath("/admin/history")
+  revalidatePath("/admin/users")
 }
 
 function failure(error: unknown): ActionResult {
@@ -196,10 +197,10 @@ export async function updateDisplayName(name: string): Promise<ActionResult> {
   try {
     const viewer = await getViewer()
     if (!viewer) return { ok: false, error: "Sign in first." }
-    const cleaned = displayName(name)
-    if (!cleaned) return { ok: false, error: "Use 1 to 40 characters." }
+    const cleaned = accountDisplayName(name)
+    if (!cleaned.ok) return cleaned
     await getAuth().api.updateUser({
-      body: { name: cleaned },
+      body: { name: cleaned.name },
       headers: await headers(),
     })
     refresh()
@@ -306,6 +307,49 @@ export async function addGuestName(date: string, rawName: string): Promise<Actio
       userId: null,
       personKind: "guest",
     })
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function setUserDisplayName(userId: string, rawName: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!userId) return { ok: false, error: "Missing user." }
+    const parsed = accountDisplayName(rawName)
+    if (!parsed.ok) return parsed
+    const result = await getDb().transaction(async (tx) => {
+      const updated = await tx
+        .update(user)
+        .set({ name: parsed.name })
+        .where(eq(user.id, userId))
+        .returning({ id: user.id })
+      if (updated.length === 0) return { ok: false as const, error: "That person isn't registered." }
+      await tx.update(booking).set({ name: parsed.name }).where(eq(booking.userId, userId))
+      return { ok: true as const }
+    })
+    if (result.ok) refresh()
+    return result
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function renameGuestBooking(bookingId: string, rawName: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!bookingId) return { ok: false, error: "Missing booking." }
+    const [row] = await getDb()
+      .select({ id: booking.id, userId: booking.userId })
+      .from(booking)
+      .where(eq(booking.id, bookingId))
+      .limit(1)
+    if (!row) return { ok: false, error: "That spot is already gone." }
+    const parsed = guestBookingRename(row.userId, rawName)
+    if (!parsed.ok) return parsed
+    await getDb().update(booking).set({ name: parsed.name }).where(eq(booking.id, bookingId))
+    refresh()
+    return { ok: true }
   } catch (error) {
     return failure(error)
   }

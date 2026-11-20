@@ -8,7 +8,7 @@ import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
 import { AdminAdd } from "@/components/admin-add"
 import type { DirectoryUser } from "@/lib/admin-add"
-import { bookSpot, removeBooking, removeOwnBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
+import { bookSpot, removeBooking, removeOwnBooking, renameGuestBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -102,6 +102,30 @@ export function BookingDialog({
                     <span className="text-muted-foreground"> · {person.name}</span>
                   ) : null}
                 </span>
+                {isAdmin && person.userId === null ? (
+                  <form
+                    className="flex items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      const name = String(new FormData(event.currentTarget).get("name") ?? "")
+                      run(() => renameGuestBooking(person.id, name))
+                    }}
+                  >
+                    <Input
+                      name="name"
+                      required
+                      maxLength={40}
+                      key={`${person.id}-${person.name ?? person.firstName}`}
+                      defaultValue={person.name ?? person.firstName}
+                      disabled={busy}
+                      aria-label={`Name for ${person.firstName}`}
+                      className="h-7 w-28"
+                    />
+                    <Button type="submit" size="sm" variant="outline" disabled={busy}>
+                      Save
+                    </Button>
+                  </form>
+                ) : null}
                 {person.canRemove ? (
                   <button
                     type="button"

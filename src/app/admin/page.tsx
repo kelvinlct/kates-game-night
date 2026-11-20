@@ -55,6 +55,9 @@ async function AdminContent({
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href="/admin/users" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Users
+          </Link>
           <Link href="/admin/history" className={buttonVariants({ variant: "outline", size: "sm" })}>
             History
           </Link>
