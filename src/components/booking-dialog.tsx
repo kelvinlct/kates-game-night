@@ -175,7 +175,10 @@ export function BookingDialog({
             ) : null}
             {askAnswer ? (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="security-answer">What is Kate&apos;s last name?</Label>
+                <Label htmlFor="security-answer" className="gap-1.5">
+                  <span>What is Kate&apos;s last name?</span>
+                  <span className="text-xs font-normal text-muted-foreground">(security question)</span>
+                </Label>
                 <Input
                   id="security-answer"
                   name="answer"
