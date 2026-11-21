@@ -4,10 +4,10 @@ import { randomBytes } from "node:crypto"
 import { and, asc, eq, gt, lt } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies, headers } from "next/headers"
-import { getDb } from "@/db"
-import { answerAttempt, booking, gameNight, user } from "@/db/schema"
+import { getDb, type AppDatabase } from "@/db"
+import { answerAttempt, booking, gameNight, user, waitlist } from "@/db/schema"
 import { recordBookingEvent } from "@/server/booking-events"
-import { adminAddBlock } from "@/lib/admin-add"
+import { adminPlacement, peopleToPromote, selfPlacement } from "@/lib/waitlist"
 import { DEFAULT_CAPACITY, isFull, parseCapacity } from "@/lib/capacity"
 import { isPastDate, isRealDate, todayInToronto } from "@/lib/dates"
 import {
@@ -62,6 +62,48 @@ async function recordFailure(ip: string) {
 
 async function clearFailures(ip: string) {
   await getDb().delete(answerAttempt).where(eq(answerAttempt.ip, ip))
+}
+
+type NightTx = Parameters<Parameters<AppDatabase["transaction"]>[0]>[0]
+
+async function promoteOpenSeats(
+  tx: NightTx,
+  night: { id: string; date: string; capacity: number },
+) {
+  const seated = await tx
+    .select({ id: booking.id })
+    .from(booking)
+    .where(eq(booking.gameNightId, night.id))
+  const waiting = await tx
+    .select({
+      id: waitlist.id,
+      userId: waitlist.userId,
+      name: waitlist.name,
+      guestTokenHash: waitlist.guestTokenHash,
+    })
+    .from(waitlist)
+    .where(eq(waitlist.gameNightId, night.id))
+    .orderBy(asc(waitlist.createdAt), asc(waitlist.id))
+    .for("update")
+  for (const person of peopleToPromote(night.capacity, seated.length, waiting)) {
+    await tx.insert(booking).values({
+      id: crypto.randomUUID(),
+      gameNightId: night.id,
+      userId: person.userId,
+      guestTokenHash: person.guestTokenHash,
+      name: person.name,
+    })
+    await tx.delete(waitlist).where(eq(waitlist.id, person.id))
+    await recordBookingEvent(tx, {
+      action: "wait_promoted",
+      nightDate: night.date,
+      personName: person.name,
+      personKind: person.userId ? "signed-in" : "guest",
+      personUserId: person.userId,
+      actorName: null,
+      actorUserId: null,
+    })
+  }
 }
 
 export async function bookSpot(
@@ -122,30 +164,43 @@ export async function bookSpot(
       }
 
       const existing = await tx
-        .select({ id: booking.id, userId: booking.userId })
+        .select({ id: booking.id, userId: booking.userId, guestTokenHash: booking.guestTokenHash })
         .from(booking)
         .where(eq(booking.gameNightId, night.id))
-
-      if (viewer && existing.some((item) => item.userId === viewer.id)) {
-        return { ok: false as const, error: "You're already in." }
-      }
-      if (isFull(night.capacity, existing.length)) {
-        return { ok: false as const, error: "That night is full." }
-      }
+      const queued = await tx
+        .select({ id: waitlist.id, userId: waitlist.userId, guestTokenHash: waitlist.guestTokenHash })
+        .from(waitlist)
+        .where(eq(waitlist.gameNightId, night.id))
+      const sameGuest = (hash: string | null) => Boolean(guest && hash && hash === guest.hash)
+      const placement = selfPlacement({
+        open: night.isOpen,
+        past: isPastDate(night.date, today),
+        full: isFull(night.capacity, existing.length),
+        waitlistEnabled: night.waitlistEnabled,
+        alreadyBooked: viewer
+          ? existing.some((item) => item.userId === viewer.id)
+          : existing.some((item) => sameGuest(item.guestTokenHash)),
+        alreadyWaiting: viewer
+          ? queued.some((item) => item.userId === viewer.id)
+          : queued.some((item) => sameGuest(item.guestTokenHash)),
+      })
+      if (!placement.ok) return placement
 
       if (markVerified && viewer) {
         await tx.update(user).set({ verified: true }).where(eq(user.id, viewer.id))
       }
 
-      await tx.insert(booking).values({
+      const row = {
         id: crypto.randomUUID(),
         gameNightId: night.id,
         userId: viewer?.id ?? null,
         guestTokenHash: guest?.hash ?? null,
         name,
-      })
+      }
+      const waiting = placement.place === "wait"
+      await tx.insert(waiting ? waitlist : booking).values(row)
       await recordBookingEvent(tx, {
-        action: "joined",
+        action: waiting ? "wait_joined" : "joined",
         nightDate: night.date,
         personName: name,
         personKind: viewer ? "signed-in" : "guest",
@@ -153,7 +208,7 @@ export async function bookSpot(
         actorName: null,
         actorUserId: null,
       })
-      return { ok: true as const }
+      return { ok: true as const, waiting }
     })
 
     if (result.ok) {
@@ -242,25 +297,36 @@ async function commitAdminAdd(input: {
           .from(booking)
           .where(eq(booking.gameNightId, night.id))
       : []
-    const block = adminAddBlock({
+    const queued = night
+      ? await tx
+          .select({ userId: waitlist.userId })
+          .from(waitlist)
+          .where(eq(waitlist.gameNightId, night.id))
+      : []
+    const placement = adminPlacement({
       open: Boolean(night?.isOpen),
       past: night ? isPastDate(night.date, today) : false,
       full: night ? isFull(night.capacity, existing.length) : false,
-      duplicateUser: Boolean(input.userId && existing.some((item) => item.userId === input.userId)),
+      waitlistEnabled: night ? night.waitlistEnabled : true,
+      alreadyBooked: Boolean(input.userId && existing.some((item) => item.userId === input.userId)),
+      alreadyWaiting: Boolean(input.userId && queued.some((item) => item.userId === input.userId)),
     })
-    if (block || !night) {
-      return { ok: false as const, error: block ?? "That night is closed." }
+    if (!placement.ok || !night) {
+      return { ok: false as const, error: placement.ok ? "That night is closed." : placement.error }
     }
 
-    await tx.insert(booking).values({
+    const waiting = placement.place === "wait"
+    const row = {
       id: crypto.randomUUID(),
       gameNightId: night.id,
       userId: input.userId,
       guestTokenHash: null,
       name: input.name,
-    })
+    }
+    if (waiting) await tx.insert(waitlist).values(row)
+    else await tx.insert(booking).values(row)
     await recordBookingEvent(tx, {
-      action: "joined",
+      action: waiting ? "wait_joined" : "joined",
       nightDate: night.date,
       personName: input.name,
       personKind: input.personKind,
@@ -268,7 +334,7 @@ async function commitAdminAdd(input: {
       actorName,
       actorUserId: input.admin.id,
     })
-    return { ok: true as const }
+    return { ok: true as const, waiting }
   })
   if (result.ok) refresh()
   return result
@@ -335,6 +401,7 @@ export async function setUserDisplayName(userId: string, rawName: string): Promi
         .returning({ id: user.id })
       if (updated.length === 0) return { ok: false as const, error: "That person isn't registered." }
       await tx.update(booking).set({ name: parsed.name }).where(eq(booking.userId, userId))
+      await tx.update(waitlist).set({ name: parsed.name }).where(eq(waitlist.userId, userId))
       return { ok: true as const }
     })
     if (result.ok) refresh()
@@ -353,10 +420,19 @@ export async function renameGuestBooking(bookingId: string, rawName: string): Pr
       .from(booking)
       .where(eq(booking.id, bookingId))
       .limit(1)
-    if (!row) return { ok: false, error: "That spot is already gone." }
-    const parsed = guestBookingRename(row.userId, rawName)
+    const [queued] = row
+      ? []
+      : await getDb()
+          .select({ id: waitlist.id, userId: waitlist.userId })
+          .from(waitlist)
+          .where(eq(waitlist.id, bookingId))
+          .limit(1)
+    const target = row ?? queued
+    if (!target) return { ok: false, error: "That spot is already gone." }
+    const parsed = guestBookingRename(target.userId, rawName)
     if (!parsed.ok) return parsed
-    await getDb().update(booking).set({ name: parsed.name }).where(eq(booking.id, bookingId))
+    if (row) await getDb().update(booking).set({ name: parsed.name }).where(eq(booking.id, bookingId))
+    else await getDb().update(waitlist).set({ name: parsed.name }).where(eq(waitlist.id, bookingId))
     refresh()
     return { ok: true }
   } catch (error) {
@@ -375,21 +451,33 @@ export async function setNightOpen(
     const db = getDb()
     if (open) {
       const requested = parseStartTime(startTime)
-      await db
-        .insert(gameNight)
-        .values({
-          id: crypto.randomUUID(),
-          date,
-          isOpen: true,
-          capacity: DEFAULT_CAPACITY,
-          startTime: requested ?? defaultStartTime(date),
-          game: DEFAULT_GAME,
-          location: DEFAULT_LOCATION,
-        })
-        .onConflictDoUpdate({
-          target: gameNight.date,
-          set: requested ? { isOpen: true, startTime: requested } : { isOpen: true },
-        })
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(gameNight)
+          .values({
+            id: crypto.randomUUID(),
+            date,
+            isOpen: true,
+            capacity: DEFAULT_CAPACITY,
+            startTime: requested ?? defaultStartTime(date),
+            game: DEFAULT_GAME,
+            location: DEFAULT_LOCATION,
+            waitlistEnabled: true,
+          })
+          .onConflictDoUpdate({
+            target: gameNight.date,
+            set: requested ? { isOpen: true, startTime: requested } : { isOpen: true },
+          })
+        const [night] = await tx
+          .select()
+          .from(gameNight)
+          .where(eq(gameNight.date, date))
+          .for("update")
+          .limit(1)
+        if (night?.isOpen) {
+          await promoteOpenSeats(tx, { id: night.id, date: night.date, capacity: night.capacity })
+        }
+      })
     } else {
       await db.update(gameNight).set({ isOpen: false }).where(eq(gameNight.date, date))
     }
@@ -408,16 +496,22 @@ export async function setNightCapacity(date: string, capacity: number): Promise<
     if (parsed === null) {
       return { ok: false, error: "Capacity must be a whole number from 1 to 20." }
     }
-    const updated = await getDb()
-      .update(gameNight)
-      .set({ capacity: parsed })
-      .where(eq(gameNight.date, date))
-      .returning({ id: gameNight.id })
-    if (updated.length === 0) {
-      return { ok: false, error: "Open the night before setting a capacity." }
-    }
-    refresh()
-    return { ok: true }
+    const result = await getDb().transaction(async (tx) => {
+      const [night] = await tx
+        .select()
+        .from(gameNight)
+        .where(eq(gameNight.date, date))
+        .for("update")
+        .limit(1)
+      if (!night) return { ok: false as const, error: "Open the night before setting a capacity." }
+      await tx.update(gameNight).set({ capacity: parsed }).where(eq(gameNight.id, night.id))
+      if (night.isOpen) {
+        await promoteOpenSeats(tx, { id: night.id, date: night.date, capacity: parsed })
+      }
+      return { ok: true as const }
+    })
+    if (result.ok) refresh()
+    return result
   } catch (error) {
     return failure(error)
   }
@@ -486,39 +580,96 @@ export async function setNightLocation(date: string, location: string): Promise<
   }
 }
 
+export async function setNightWaitlist(date: string, enabled: boolean): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    const updated = await getDb()
+      .update(gameNight)
+      .set({ waitlistEnabled: enabled })
+      .where(eq(gameNight.date, date))
+      .returning({ id: gameNight.id })
+    if (updated.length === 0) {
+      return { ok: false, error: "Open the night before changing the waiting list." }
+    }
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
 export async function removeOwnBooking(bookingId: string): Promise<ActionResult> {
   try {
     if (!bookingId) return { ok: false, error: "Missing spot." }
     const viewer = await getViewer()
     const guestHash = await presentedGuestHash()
     const result = await getDb().transaction(async (tx) => {
-      const [row] = await tx
+      const [seat] = await tx
         .select({
           id: booking.id,
           userId: booking.userId,
           name: booking.name,
           guestTokenHash: booking.guestTokenHash,
+          nightId: gameNight.id,
           nightDate: gameNight.date,
+          capacity: gameNight.capacity,
         })
         .from(booking)
         .innerJoin(gameNight, eq(booking.gameNightId, gameNight.id))
         .where(eq(booking.id, bookingId))
         .limit(1)
-      if (!row) return { ok: false as const, error: "That spot is already gone." }
+      if (seat) {
+        await tx.select().from(gameNight).where(eq(gameNight.id, seat.nightId)).for("update")
+        const allowed = canRemoveOwnBooking({
+          bookingUserId: seat.userId,
+          viewerId: viewer?.id ?? null,
+          storedTokenHash: seat.guestTokenHash,
+          presentedTokenHash: guestHash,
+        })
+        if (!allowed) return { ok: false as const, error: "You can't remove that." }
+        await tx.delete(booking).where(eq(booking.id, bookingId))
+        await recordBookingEvent(tx, {
+          action: "removed",
+          nightDate: seat.nightDate,
+          personName: seat.name,
+          personKind: seat.userId ? "signed-in" : "guest",
+          personUserId: seat.userId,
+          actorName: null,
+          actorUserId: null,
+        })
+        await promoteOpenSeats(tx, { id: seat.nightId, date: seat.nightDate, capacity: seat.capacity })
+        return { ok: true as const }
+      }
+      const [queued] = await tx
+        .select({
+          id: waitlist.id,
+          userId: waitlist.userId,
+          name: waitlist.name,
+          guestTokenHash: waitlist.guestTokenHash,
+          nightId: gameNight.id,
+          nightDate: gameNight.date,
+        })
+        .from(waitlist)
+        .innerJoin(gameNight, eq(waitlist.gameNightId, gameNight.id))
+        .where(eq(waitlist.id, bookingId))
+        .limit(1)
+      if (!queued) return { ok: false as const, error: "That spot is already gone." }
+      await tx.select().from(gameNight).where(eq(gameNight.id, queued.nightId)).for("update")
       const allowed = canRemoveOwnBooking({
-        bookingUserId: row.userId,
+        bookingUserId: queued.userId,
         viewerId: viewer?.id ?? null,
-        storedTokenHash: row.guestTokenHash,
+        storedTokenHash: queued.guestTokenHash,
         presentedTokenHash: guestHash,
       })
       if (!allowed) return { ok: false as const, error: "You can't remove that." }
-      await tx.delete(booking).where(eq(booking.id, bookingId))
+      await tx.delete(waitlist).where(eq(waitlist.id, bookingId))
       await recordBookingEvent(tx, {
-        action: "removed",
-        nightDate: row.nightDate,
-        personName: row.name,
-        personKind: row.userId ? "signed-in" : "guest",
-        personUserId: row.userId,
+        action: "wait_left",
+        nightDate: queued.nightDate,
+        personName: queued.name,
+        personKind: queued.userId ? "signed-in" : "guest",
+        personUserId: queued.userId,
         actorName: null,
         actorUserId: null,
       })
@@ -536,27 +687,58 @@ export async function removeBooking(bookingId: string): Promise<ActionResult> {
     const admin = await requireAdminViewer()
     if (!admin) return { ok: false, error: "You can't do that." }
     if (!bookingId) return { ok: false, error: "Missing booking." }
+    const actorName = displayName(admin.name) ?? admin.email
     const result = await getDb().transaction(async (tx) => {
-      const [row] = await tx
+      const [seat] = await tx
         .select({
           id: booking.id,
           userId: booking.userId,
           name: booking.name,
+          nightId: gameNight.id,
           nightDate: gameNight.date,
+          capacity: gameNight.capacity,
         })
         .from(booking)
         .innerJoin(gameNight, eq(booking.gameNightId, gameNight.id))
         .where(eq(booking.id, bookingId))
         .limit(1)
-      if (!row) return { ok: false as const, error: "That spot is already gone." }
-      await tx.delete(booking).where(eq(booking.id, bookingId))
+      if (seat) {
+        await tx.select().from(gameNight).where(eq(gameNight.id, seat.nightId)).for("update")
+        await tx.delete(booking).where(eq(booking.id, bookingId))
+        await recordBookingEvent(tx, {
+          action: "removed",
+          nightDate: seat.nightDate,
+          personName: seat.name,
+          personKind: seat.userId ? "signed-in" : "guest",
+          personUserId: seat.userId,
+          actorName,
+          actorUserId: admin.id,
+        })
+        await promoteOpenSeats(tx, { id: seat.nightId, date: seat.nightDate, capacity: seat.capacity })
+        return { ok: true as const }
+      }
+      const [queued] = await tx
+        .select({
+          id: waitlist.id,
+          userId: waitlist.userId,
+          name: waitlist.name,
+          nightId: gameNight.id,
+          nightDate: gameNight.date,
+        })
+        .from(waitlist)
+        .innerJoin(gameNight, eq(waitlist.gameNightId, gameNight.id))
+        .where(eq(waitlist.id, bookingId))
+        .limit(1)
+      if (!queued) return { ok: false as const, error: "That spot is already gone." }
+      await tx.select().from(gameNight).where(eq(gameNight.id, queued.nightId)).for("update")
+      await tx.delete(waitlist).where(eq(waitlist.id, bookingId))
       await recordBookingEvent(tx, {
-        action: "removed",
-        nightDate: row.nightDate,
-        personName: row.name,
-        personKind: row.userId ? "signed-in" : "guest",
-        personUserId: row.userId,
-        actorName: admin.name,
+        action: "wait_left",
+        nightDate: queued.nightDate,
+        personName: queued.name,
+        personKind: queued.userId ? "signed-in" : "guest",
+        personUserId: queued.userId,
+        actorName,
         actorUserId: admin.id,
       })
       return { ok: true as const }

@@ -91,7 +91,30 @@ export const gameNight = pgTable("game_night", {
   startTime: text("start_time"),
   game: text("game").notNull().default("TBD"),
   location: text("location").notNull().default("Kate's place"),
+  /** When false, a full night does not take new waiting-list joins. Existing rows still promote. */
+  waitlistEnabled: boolean("waitlist_enabled").notNull().default(true),
 })
+
+export const waitlist = pgTable(
+  "waitlist",
+  {
+    id: text("id").primaryKey(),
+    gameNightId: text("game_night_id")
+      .notNull()
+      .references(() => gameNight.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    /** SHA-256 hex of the guest's httpOnly cookie. Null for signed-in rows. */
+    guestTokenHash: text("guest_token_hash"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("waitlist_night_created_idx").on(table.gameNightId, table.createdAt),
+    uniqueIndex("waitlist_night_user_unique")
+      .on(table.gameNightId, table.userId)
+      .where(sql`${table.userId} is not null`),
+  ],
+)
 
 export const booking = pgTable(
   "booking",

@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm"
 import { getDb } from "@/db"
-import { booking, bookingEvent, gameNight, user } from "@/db/schema"
+import { booking, bookingEvent, gameNight, user, waitlist } from "@/db/schema"
 import {
   DEFAULT_CAPACITY,
   countLabel,
@@ -49,7 +49,9 @@ type StoredNight = {
   startTime: string | null
   game: string
   location: string
+  waitlistEnabled: boolean
   bookings: StoredBooking[]
+  waiting: StoredBooking[]
 }
 
 function defaultStartForPlaceholder(date: string): string {
@@ -71,8 +73,11 @@ function placeholder(date: string, today: string): DayView {
     timeLabel: null,
     game: DEFAULT_GAME,
     location: DEFAULT_LOCATION,
+    waitlistEnabled: true,
     bookings: [],
+    waiting: [],
     viewerBooked: false,
+    viewerWaitlisted: false,
   }
 }
 
@@ -84,11 +89,29 @@ function toDayView(
   guestHash: string | null,
   inMonth: boolean,
 ): DayView {
-  const guestCount = night?.bookings.length ?? 0
+  const bookings = night?.bookings ?? []
+  const waiting = night?.waiting ?? []
+  const guestCount = bookings.length
   const capacity = night?.capacity ?? DEFAULT_CAPACITY
   const open = Boolean(night?.isOpen)
   const status = statusFor(open, capacity, guestCount)
   const startTime = effectiveStartTime(night?.startTime, date)
+  const owns = (row: StoredBooking) =>
+    canRemoveOwnBooking({
+      bookingUserId: row.userId,
+      viewerId: viewer?.id ?? null,
+      storedTokenHash: row.guestTokenHash,
+      presentedTokenHash: guestHash,
+    })
+  const toPublic = (row: StoredBooking) => {
+    const name = shownBookingName(row.name, row.userId ? row.userName : null)
+    return {
+      id: row.id,
+      firstName: firstName(name),
+      canRemove: owns(row),
+      ...(viewer?.isAdmin ? { name, userId: row.userId } : {}),
+    }
+  }
   return {
     date,
     inMonth,
@@ -103,23 +126,11 @@ function toDayView(
     timeLabel: status === "closed" ? null : formatStartTime(startTime),
     game: gameLabel(night?.game),
     location: locationLabel(night?.location),
-    bookings: (night?.bookings ?? []).map((item) => {
-      const name = shownBookingName(item.name, item.userId ? item.userName : null)
-      return {
-        id: item.id,
-        firstName: firstName(name),
-        canRemove: canRemoveOwnBooking({
-          bookingUserId: item.userId,
-          viewerId: viewer?.id ?? null,
-          storedTokenHash: item.guestTokenHash,
-          presentedTokenHash: guestHash,
-        }),
-        ...(viewer?.isAdmin ? { name, userId: item.userId } : {}),
-      }
-    }),
-    viewerBooked: Boolean(
-      viewer && night?.bookings.some((item) => item.userId === viewer.id),
-    ),
+    waitlistEnabled: night?.waitlistEnabled ?? true,
+    bookings: bookings.map(toPublic),
+    waiting: waiting.map(toPublic),
+    viewerBooked: bookings.some(owns),
+    viewerWaitlisted: waiting.some(owns),
   }
 }
 
@@ -135,6 +146,7 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
       startTime: gameNight.startTime,
       game: gameNight.game,
       location: gameNight.location,
+      waitlistEnabled: gameNight.waitlistEnabled,
       bookingId: booking.id,
       bookingName: booking.name,
       bookingUserId: booking.userId,
@@ -160,7 +172,9 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
         startTime: row.startTime,
         game: row.game,
         location: row.location,
+        waitlistEnabled: row.waitlistEnabled,
         bookings: [],
+        waiting: [],
       }
       nights.set(row.date, night)
     }
@@ -170,6 +184,33 @@ export async function getMonth(year: number, month: number, viewer: Viewer | nul
         name: row.bookingName,
         userId: row.bookingUserId,
         userName: row.bookingUserName,
+        guestTokenHash: row.guestTokenHash,
+      })
+    }
+  }
+
+  const nightIds = [...nights.values()].map((night) => night.id)
+  if (nightIds.length > 0) {
+    const waitingRows = await db
+      .select({
+        id: waitlist.id,
+        nightId: waitlist.gameNightId,
+        name: waitlist.name,
+        userId: waitlist.userId,
+        userName: user.name,
+        guestTokenHash: waitlist.guestTokenHash,
+      })
+      .from(waitlist)
+      .leftJoin(user, eq(waitlist.userId, user.id))
+      .where(inArray(waitlist.gameNightId, nightIds))
+      .orderBy(asc(waitlist.createdAt), asc(waitlist.id))
+    const byId = new Map([...nights.values()].map((night) => [night.id, night]))
+    for (const row of waitingRows) {
+      byId.get(row.nightId)?.waiting.push({
+        id: row.id,
+        name: row.name,
+        userId: row.userId,
+        userName: row.userName,
         guestTokenHash: row.guestTokenHash,
       })
     }
@@ -221,7 +262,15 @@ export type HistoryEntry = {
 }
 
 function asAction(value: string): BookingAction {
-  return value === "removed" ? "removed" : "joined"
+  if (
+    value === "removed" ||
+    value === "wait_joined" ||
+    value === "wait_left" ||
+    value === "wait_promoted"
+  ) {
+    return value
+  }
+  return "joined"
 }
 
 function asKind(value: string): PersonKind {

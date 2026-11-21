@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { formatLongDate } from "@/lib/dates"
 import type { ActionResult, AdminUser, DayView } from "@/lib/types"
-import { removeBooking, setNightCapacity, setNightGame, setNightLocation, setNightOpen, setNightStartTime, setUserVerified } from "@/server/actions"
+import { removeBooking, setNightCapacity, setNightGame, setNightLocation, setNightOpen, setNightStartTime, setNightWaitlist, setUserVerified } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -48,6 +48,7 @@ export function AdminBoard({ days, users }: { days: DayView[]; users: AdminUser[
                 <TableHead>Starts</TableHead>
                 <TableHead>Board game</TableHead>
                 <TableHead>Location</TableHead>
+                <TableHead>Waiting list</TableHead>
                 <TableHead>Bookings</TableHead>
               </TableRow>
             </TableHeader>
@@ -216,6 +217,14 @@ function NightRow({
             Save
           </Button>
         </form>
+      </TableCell>
+      <TableCell>
+        <Switch
+          checked={day.waitlistEnabled}
+          disabled={!day.stored || pending}
+          aria-label={`Waiting list for ${formatLongDate(day.date)}`}
+          onCheckedChange={(checked) => run(() => setNightWaitlist(day.date, checked))}
+        />
       </TableCell>
       <TableCell className="whitespace-normal">
         {day.bookings.length === 0 ? (
