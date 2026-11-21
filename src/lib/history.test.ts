@@ -31,6 +31,12 @@ describe("booking history labels", () => {
     expect(actionLabel({ action: "joined", actorName: "Kate" })).toBe("Joined, added by Kate")
     expect(actionLabel({ action: "removed", actorName: null })).toBe("Removed")
     expect(actionLabel({ action: "removed", actorName: "Kate" })).toBe("Removed by Kate")
+    expect(actionLabel({ action: "wait_joined", actorName: null })).toBe("Joined waiting list")
+    expect(actionLabel({ action: "wait_joined", actorName: "Kate" })).toBe(
+      "Joined waiting list, added by Kate",
+    )
+    expect(actionLabel({ action: "wait_left", actorName: null })).toBe("Left waiting list")
+    expect(actionLabel({ action: "wait_promoted", actorName: null })).toBe("Promoted from waiting list")
   })
 
   it("formats the night and the Toronto timestamp", () => {
@@ -75,6 +81,19 @@ describe("booking email", () => {
     )
     expect(message.subject).toBe("[Kate's Game Night] Alex joined Fri, Nov 20")
     expect(message.text).toContain("Alex (signed in) joined Friday, November 20, added by Kate.")
+  })
+
+  it("emails a waiting-list promotion", () => {
+    const message = bookingEmailContent(
+      { ...joined, action: "wait_promoted" },
+      "https://games.example/admin/history",
+    )
+    expect(message.subject).toBe(
+      "[Kate's Game Night] Alex was promoted from the waiting list for Fri, Nov 20",
+    )
+    expect(message.text).toContain(
+      "Alex (signed in) was promoted from the waiting list into Friday, November 20.",
+    )
   })
 
   it("prefers the configured site URL for the history link", () => {

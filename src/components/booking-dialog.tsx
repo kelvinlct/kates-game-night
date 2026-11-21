@@ -9,7 +9,7 @@ import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
 import { AdminAdd } from "@/components/admin-add"
 import type { DirectoryUser } from "@/lib/admin-add"
-import { bookSpot, removeBooking, removeOwnBooking, renameGuestBooking, setNightCapacity, setNightGame, setNightLocation, setNightOpen, setNightStartTime } from "@/server/actions"
+import { bookSpot, removeBooking, removeOwnBooking, renameGuestBooking, setNightCapacity, setNightGame, setNightLocation, setNightOpen, setNightStartTime, setNightWaitlist } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -48,8 +48,16 @@ export function BookingDialog({
   isAdmin: boolean
   directory?: DirectoryUser[]
 }) {
-  const canBook = day.inMonth && day.status === "open" && !day.isPast && !day.viewerBooked
-  const canAdminAdd = isAdmin && day.inMonth && !day.isPast && day.status !== "closed"
+  const alreadyListed = day.viewerBooked || day.viewerWaitlisted
+  const canBook = day.inMonth && day.status === "open" && !day.isPast && !alreadyListed
+  const canWait =
+    day.inMonth && day.status === "full" && day.waitlistEnabled && !day.isPast && !alreadyListed
+  const canAdminAdd =
+    isAdmin &&
+    day.inMonth &&
+    !day.isPast &&
+    day.status !== "closed" &&
+    !(day.status === "full" && !day.waitlistEnabled)
   const askAnswer = !isAdmin && bookMode !== "one-click"
   const [state, action, pending] = useActionState(bookSpot, null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -87,6 +95,11 @@ export function BookingDialog({
             {day.label ? `${day.label}. ` : ""}
             {statusLine(day)}
           </DialogDescription>
+          {day.status === "full" && day.waitlistEnabled ? (
+            <p className="text-xs text-muted-foreground">
+              Full. If someone drops out, the first person on the waiting list takes their spot.
+            </p>
+          ) : null}
         </DialogHeader>
 
         <div>
@@ -153,10 +166,53 @@ export function BookingDialog({
               </li>
             ))}
           </ul>
+          {day.waiting.length > 0 ? (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Waiting list
+              </p>
+              <ol className="flex flex-col gap-1.5">
+                {day.waiting.map((person, index) => (
+                  <li key={person.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span>
+                      {index + 1}. {person.firstName}
+                      {isAdmin && person.name && person.name !== person.firstName ? (
+                        <span className="text-muted-foreground"> · {person.name}</span>
+                      ) : null}
+                    </span>
+                    {person.canRemove ? (
+                      <button
+                        type="button"
+                        className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => run(() => removeOwnBooking(person.id))}
+                      >
+                        Remove me
+                      </button>
+                    ) : null}
+                    {isAdmin && !person.canRemove ? (
+                      <button
+                        type="button"
+                        className="text-xs text-destructive underline-offset-2 hover:underline disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => run(() => removeBooking(person.id))}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
         </div>
 
-        {state?.ok ? <p className="text-sm text-primary">You&apos;re in!</p> : null}
-        {canBook && !state?.ok ? (
+        {state?.ok ? (
+          <p className="text-sm text-primary">
+            {state.waiting ? "You're on the waiting list." : "You're in!"}
+          </p>
+        ) : null}
+        {(canBook || canWait) && !state?.ok ? (
           <form action={action} className="flex flex-col gap-3">
             <input type="hidden" name="date" value={day.date} />
             {bookMode === "guest" ? (
@@ -194,7 +250,7 @@ export function BookingDialog({
               </p>
             ) : null}
             <Button type="submit" disabled={pending} className="h-10">
-              {pending ? "Joining…" : "JOIN!"}
+              {pending ? "Joining…" : canWait ? "Join waiting list" : "JOIN!"}
             </Button>
           </form>
         ) : null}
@@ -202,13 +258,25 @@ export function BookingDialog({
         {canAdminAdd ? (
           <AdminAdd
             date={day.date}
+            full={day.status === "full"}
             users={directory}
-            bookedUserIds={day.bookings.flatMap((person) => (person.userId ? [person.userId] : []))}
+            bookedUserIds={[...day.bookings, ...day.waiting].flatMap((person) =>
+              person.userId ? [person.userId] : [],
+            )}
           />
         ) : null}
 
         {isAdmin ? (
           <div className="flex flex-col gap-3 border-t border-border pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="waiting-list">Waiting list</Label>
+              <Switch
+                id="waiting-list"
+                checked={day.waitlistEnabled}
+                disabled={busy || !day.stored}
+                onCheckedChange={(checked) => run(() => setNightWaitlist(day.date, checked))}
+              />
+            </div>
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="open-night">Open this night</Label>
               <Switch

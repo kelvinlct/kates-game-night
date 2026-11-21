@@ -50,6 +50,13 @@
       "when": 1795220427490,
       "tag": "0006_night-location",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795223762644,
+      "tag": "0007_waiting-list",
+      "breakpoints": true
     }
   ]
 }

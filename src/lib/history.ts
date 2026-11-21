@@ -2,7 +2,12 @@ import { formatLongDate, TIME_ZONE } from "@/lib/dates"
 
 export const HISTORY_LIMIT = 200
 
-export type BookingAction = "joined" | "removed"
+export type BookingAction =
+  | "joined"
+  | "removed"
+  | "wait_joined"
+  | "wait_left"
+  | "wait_promoted"
 export type PersonKind = "signed-in" | "guest"
 
 export type BookingEventDraft = {
@@ -29,6 +34,13 @@ export function whoLabel(name: string, kind: PersonKind): string {
 }
 
 export function actionLabel(event: Pick<BookingEventDraft, "action" | "actorName">): string {
+  if (event.action === "wait_joined") {
+    return event.actorName ? `Joined waiting list, added by ${event.actorName}` : "Joined waiting list"
+  }
+  if (event.action === "wait_left") {
+    return event.actorName ? `Left waiting list, removed by ${event.actorName}` : "Left waiting list"
+  }
+  if (event.action === "wait_promoted") return "Promoted from waiting list"
   if (event.action === "joined") {
     return event.actorName ? `Joined, added by ${event.actorName}` : "Joined"
   }
@@ -70,22 +82,40 @@ export function historyPageUrl(env: NodeJS.ProcessEnv): string {
   return "http://localhost:3000/admin/history"
 }
 
+function emailVerb(
+  action: BookingAction,
+  actorName: string | null,
+): { subject: string; body: string; by: string } {
+  const by = actorName ? ` by ${actorName}` : ""
+  if (action === "wait_joined") {
+    return { subject: "joined the waiting list for", body: "joined the waiting list for", by }
+  }
+  if (action === "wait_left") {
+    return { subject: "left the waiting list for", body: "left the waiting list for", by }
+  }
+  if (action === "wait_promoted") {
+    return {
+      subject: "was promoted from the waiting list for",
+      body: "was promoted from the waiting list into",
+      by: "",
+    }
+  }
+  if (action === "joined") {
+    return { subject: "joined", body: "joined", by: actorName ? `, added by ${actorName}` : "" }
+  }
+  return { subject: "was removed from", body: "was removed from", by }
+}
+
 export function bookingEmailContent(
   notice: BookingNotice,
   historyUrl: string,
 ): { subject: string; text: string } {
   const night = formatShortNight(notice.nightDate)
-  const joined = notice.action === "joined"
-  const subject = `[Kate's Game Night] ${notice.personName} ${joined ? "joined" : "was removed from"} ${night}`
   const who = `${notice.personName} (${kindLabel(notice.personKind)})`
   const longNight = formatLongDate(notice.nightDate)
-  const sentence = joined
-    ? notice.actorName
-      ? `${who} joined ${longNight}, added by ${notice.actorName}.`
-      : `${who} joined ${longNight}.`
-    : notice.actorName
-      ? `${who} was removed from ${longNight} by ${notice.actorName}.`
-      : `${who} was removed from ${longNight}.`
+  const verb = emailVerb(notice.action, notice.actorName)
+  const subject = `[Kate's Game Night] ${notice.personName} ${verb.subject} ${night}`
+  const sentence = `${who} ${verb.body} ${longNight}${verb.by}.`
   const text = [sentence, `When: ${formatTorontoTimestamp(notice.createdAt)}`, `History: ${historyUrl}`].join("\n")
   return { subject, text }
 }

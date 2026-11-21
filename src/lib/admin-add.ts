@@ -16,17 +16,3 @@ export function filterDirectory(users: DirectoryUser[], query: string): Director
       person.name.toLowerCase().includes(needle) || person.email.toLowerCase().includes(needle),
   )
 }
-
-/** Why an admin cannot add someone. Null means the seat can be taken. */
-export function adminAddBlock(input: {
-  open: boolean
-  past: boolean
-  full: boolean
-  duplicateUser: boolean
-}): string | null {
-  if (!input.open) return "That night is closed."
-  if (input.past) return "That night has already passed."
-  if (input.duplicateUser) return "They're already in."
-  if (input.full) return "That night is full."
-  return null
-}

@@ -39,11 +39,15 @@ export type DayView = {
   game: string
   /** Where the night is. Defaults to Kate's place. */
   location: string
+  /** Full nights accept a waiting list unless an admin turns this off. */
+  waitlistEnabled: boolean
   bookings: PublicBooking[]
+  waiting: PublicBooking[]
   viewerBooked: boolean
+  viewerWaitlisted: boolean
 }
 
-export type ActionResult = { ok: true } | { ok: false; error: string }
+export type ActionResult = { ok: true; waiting?: boolean } | { ok: false; error: string }
 
 export type AdminUser = {
   id: string

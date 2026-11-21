@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { filterDirectory, type DirectoryUser } from "@/lib/admin-add"
 import { addGuestName, addRegisteredUser } from "@/server/actions"
+import type { ActionResult } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,10 +12,12 @@ const VISIBLE = 8
 
 export function AdminAdd({
   date,
+  full = false,
   users,
   bookedUserIds,
 }: {
   date: string
+  full?: boolean
   users: DirectoryUser[]
   bookedUserIds: string[]
 }) {
@@ -29,15 +32,17 @@ export function AdminAdd({
     query,
   ).slice(0, VISIBLE)
 
-  function finish(result: { ok: true } | { ok: false; error: string }, clearGuest: boolean) {
+  function finish(result: ActionResult, clearGuest: boolean) {
     setAdded(result.ok)
-    setNotice(result.ok ? "Added." : result.error)
+    setNotice(result.ok ? (result.waiting ? "Added to the waiting list." : "Added.") : result.error)
     if (result.ok && clearGuest) setGuestKey((key) => key + 1)
   }
 
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-3">
-      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Add someone</p>
+      <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        {full ? "Add to waiting list" : "Add someone"}
+      </p>
       <form
         className="flex items-end gap-2"
         onSubmit={(event) => {
