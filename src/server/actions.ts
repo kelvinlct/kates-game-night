@@ -1,7 +1,7 @@
 "use server"
 
 import { randomBytes } from "node:crypto"
-import { and, eq, gt, sql } from "drizzle-orm"
+import { and, asc, eq, gt, lt } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies, headers } from "next/headers"
 import { getDb } from "@/db"
@@ -22,9 +22,10 @@ import { DEFAULT_GAME, parseGame } from "@/lib/game"
 import { DEFAULT_LOCATION, parseLocation } from "@/lib/location"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
 import {
-  WRONG_ANSWER_WINDOW_MS,
+  FAILURE_RETENTION_MS,
   checkSecurityAnswer,
-  isRateLimited,
+  lockoutFromFailures,
+  lockoutMessage,
 } from "@/lib/security"
 import type { ActionResult } from "@/lib/types"
 import type { PersonKind } from "@/lib/history"
@@ -42,20 +43,25 @@ function failure(error: unknown): ActionResult {
   return { ok: false, error: "Something went wrong. Try again." }
 }
 
-async function recentFailures(ip: string): Promise<number> {
-  const since = new Date(Date.now() - WRONG_ANSWER_WINDOW_MS)
-  const [row] = await getDb()
-    .select({ value: sql<number>`count(*)::int` })
+async function failureTimes(ip: string): Promise<number[]> {
+  const since = new Date(Date.now() - FAILURE_RETENTION_MS)
+  const rows = await getDb()
+    .select({ createdAt: answerAttempt.createdAt })
     .from(answerAttempt)
     .where(and(eq(answerAttempt.ip, ip), gt(answerAttempt.createdAt, since)))
-  return Number(row?.value ?? 0)
+    .orderBy(asc(answerAttempt.createdAt))
+  return rows.map((row) => row.createdAt.getTime())
 }
 
 async function recordFailure(ip: string) {
   const db = getDb()
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const cutoff = new Date(Date.now() - FAILURE_RETENTION_MS)
   await db.insert(answerAttempt).values({ id: crypto.randomUUID(), ip })
-  await db.delete(answerAttempt).where(sql`${answerAttempt.createdAt} < ${dayAgo}`)
+  await db.delete(answerAttempt).where(lt(answerAttempt.createdAt, cutoff))
+}
+
+async function clearFailures(ip: string) {
+  await getDb().delete(answerAttempt).where(eq(answerAttempt.ip, ip))
 }
 
 export async function bookSpot(
@@ -80,14 +86,16 @@ export async function bookSpot(
       const answer = String(formData.get("answer") ?? "")
       if (!answer.trim()) return { ok: false, error: "Enter Kate's last name." }
       const ip = await clientIp()
-      if (isRateLimited(await recentFailures(ip))) {
-        return { ok: false, error: "Too many tries. Wait an hour and try again." }
+      const lockout = lockoutFromFailures(await failureTimes(ip), Date.now())
+      if (lockout.locked) {
+        return { ok: false, error: lockoutMessage(lockout.waitMs) }
       }
       answerCorrect = checkSecurityAnswer(answer)
       if (!answerCorrect) {
         await recordFailure(ip)
         return { ok: false, error: "That's not the right answer." }
       }
+      await clearFailures(ip)
     }
 
     const markVerified = shouldMarkVerified({

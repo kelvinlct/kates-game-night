@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it } from "vitest"
 import {
   answersMatch,
   checkSecurityAnswer,
+  formatWait,
   isRateLimited,
+  lockoutFromFailures,
+  lockoutMessage,
+  LOCKOUT_STEPS_MS,
+  QUIET_RESET_MS,
   WRONG_ANSWER_LIMIT,
 } from "./security"
 
@@ -56,10 +61,55 @@ describe("security answer", () => {
     expect(checkSecurityAnswer("Lau")).toBe(false)
   })
 
-  it("locks out after the hourly failure limit", () => {
+  it("still locks out after 5 wrong answers", () => {
     expect(WRONG_ANSWER_LIMIT).toBe(5)
     expect(isRateLimited(4)).toBe(false)
     expect(isRateLimited(5)).toBe(true)
-    expect(isRateLimited(6)).toBe(true)
+  })
+})
+
+describe("escalating answer lockout", () => {
+  const minute = 60 * 1000
+  const batch = (start: number) => [0, 1, 2, 3, 4].map((second) => start + second * 1000)
+
+  it("uses 5 minutes, then 15, 30, and 1 hour", () => {
+    expect(LOCKOUT_STEPS_MS).toEqual([5 * minute, 15 * minute, 30 * minute, 60 * minute])
+    const first = batch(0)
+    const justLocked = lockoutFromFailures(first, 4_000)
+    expect(justLocked.locked).toBe(true)
+    expect(justLocked.waitMs).toBe(5 * minute - 0)
+    expect(lockoutFromFailures(first, 5 * minute + 4_000).locked).toBe(false)
+
+    const second = [...first, ...batch(10 * minute)]
+    expect(lockoutFromFailures(second, 10 * minute + 4_000).waitMs).toBe(15 * minute)
+
+    const third = [...second, ...batch(40 * minute)]
+    expect(lockoutFromFailures(third, 40 * minute + 4_000).waitMs).toBe(30 * minute)
+
+    const fourth = [...third, ...batch(80 * minute)]
+    expect(lockoutFromFailures(fourth, 80 * minute + 4_000).waitMs).toBe(60 * minute)
+
+    const fifth = [...fourth, ...batch(200 * minute)]
+    expect(lockoutFromFailures(fifth, 200 * minute + 4_000).waitMs).toBe(60 * minute)
+  })
+
+  it("ignores tries during a lockout and resets after a day of quiet", () => {
+    const first = batch(0)
+    const during = [60_000, 61_000, 62_000, 63_000, 64_000]
+    const after = batch(10 * minute)
+    expect(lockoutFromFailures([...first, ...during, ...after], 10 * minute + 4_000).waitMs).toBe(15 * minute)
+
+    const laterStart = 4_000 + QUIET_RESET_MS
+    const later = batch(laterStart)
+    expect(lockoutFromFailures([...first, ...later], laterStart + 4_000).waitMs).toBe(5 * minute)
+    expect(lockoutFromFailures(first, 4_000 + QUIET_RESET_MS).locked).toBe(false)
+  })
+
+  it("says how long is left", () => {
+    expect(lockoutMessage(5 * minute)).toBe("Too many tries. Try again in 5 minutes.")
+    expect(lockoutMessage(minute + 1000)).toBe("Too many tries. Try again in 1 minute 1 second.")
+    expect(lockoutMessage(30_000)).toBe("Too many tries. Try again in 30 seconds.")
+    expect(lockoutMessage(60 * minute)).toBe("Too many tries. Try again in 1 hour.")
+    expect(formatWait(500)).toBe("1 second")
   })
 })
