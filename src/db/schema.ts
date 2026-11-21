@@ -90,6 +90,7 @@ export const gameNight = pgTable("game_night", {
   /** Local time of day in America/Toronto, HH:mm. Null uses the weekday default. */
   startTime: text("start_time"),
   game: text("game").notNull().default("TBD"),
+  location: text("location").notNull().default("Kate's place"),
 })
 
 export const booking = pgTable(

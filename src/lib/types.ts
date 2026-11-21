@@ -37,6 +37,8 @@ export type DayView = {
   timeLabel: string | null
   /** What is being played. Defaults to TBD. */
   game: string
+  /** Where the night is. Defaults to Kate's place. */
+  location: string
   bookings: PublicBooking[]
   viewerBooked: boolean
 }
