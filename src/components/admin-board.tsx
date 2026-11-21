@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { formatLongDate } from "@/lib/dates"
 import type { ActionResult, AdminUser, DayView } from "@/lib/types"
-import { removeBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime, setUserVerified } from "@/server/actions"
+import { removeBooking, setNightCapacity, setNightGame, setNightLocation, setNightOpen, setNightStartTime, setUserVerified } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -47,6 +47,7 @@ export function AdminBoard({ days, users }: { days: DayView[]; users: AdminUser[
                 <TableHead>Capacity</TableHead>
                 <TableHead>Starts</TableHead>
                 <TableHead>Board game</TableHead>
+                <TableHead>Location</TableHead>
                 <TableHead>Bookings</TableHead>
               </TableRow>
             </TableHeader>
@@ -186,6 +187,29 @@ function NightRow({
             key={`${day.date}-${day.game}`}
             disabled={!day.stored || pending}
             aria-label={`Board game for ${formatLongDate(day.date)}`}
+            className="w-36"
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={!day.stored || pending}>
+            Save
+          </Button>
+        </form>
+      </TableCell>
+      <TableCell>
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const data = new FormData(event.currentTarget)
+            run(() => setNightLocation(day.date, String(data.get("location") ?? "")))
+          }}
+        >
+          <Input
+            name="location"
+            maxLength={80}
+            defaultValue={day.location}
+            key={`${day.date}-${day.location}`}
+            disabled={!day.stored || pending}
+            aria-label={`Location for ${formatLongDate(day.date)}`}
             className="w-36"
           />
           <Button type="submit" size="sm" variant="outline" disabled={!day.stored || pending}>

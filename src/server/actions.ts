@@ -19,6 +19,7 @@ import {
 import { accountDisplayName, cleanName, displayName, guestBookingRename } from "@/lib/names"
 import { getAuth } from "@/lib/auth"
 import { DEFAULT_GAME, parseGame } from "@/lib/game"
+import { DEFAULT_LOCATION, parseLocation } from "@/lib/location"
 import { defaultStartTime, parseStartTime } from "@/lib/start-time"
 import {
   WRONG_ANSWER_WINDOW_MS,
@@ -375,6 +376,7 @@ export async function setNightOpen(
           capacity: DEFAULT_CAPACITY,
           startTime: requested ?? defaultStartTime(date),
           game: DEFAULT_GAME,
+          location: DEFAULT_LOCATION,
         })
         .onConflictDoUpdate({
           target: gameNight.date,
@@ -447,6 +449,27 @@ export async function setNightGame(date: string, game: string): Promise<ActionRe
       .returning({ id: gameNight.id })
     if (updated.length === 0) {
       return { ok: false, error: "Open the night before naming the game." }
+    }
+    refresh()
+    return { ok: true }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+export async function setNightLocation(date: string, location: string): Promise<ActionResult> {
+  try {
+    if (!(await requireAdminViewer())) return { ok: false, error: "You can't do that." }
+    if (!isRealDate(date)) return { ok: false, error: "Pick a real date." }
+    const parsed = parseLocation(location)
+    if (!parsed) return { ok: false, error: "Keep the location to 80 characters." }
+    const updated = await getDb()
+      .update(gameNight)
+      .set({ location: parsed })
+      .where(eq(gameNight.date, date))
+      .returning({ id: gameNight.id })
+    if (updated.length === 0) {
+      return { ok: false, error: "Open the night before setting a location." }
     }
     refresh()
     return { ok: true }
