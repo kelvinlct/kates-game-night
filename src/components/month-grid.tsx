@@ -123,7 +123,7 @@ function DayBody({ day }: { day: DayView }) {
       {day.inMonth && day.status === "full" ? (
         <>
           <span className="mt-auto truncate text-sm leading-none font-semibold">{day.label}</span>
-          <span className="truncate text-[10px] leading-none">Game confirmed</span>
+          <span className="hidden truncate text-[10px] leading-none sm:block">Game confirmed</span>
         </>
       ) : null}
     </>
