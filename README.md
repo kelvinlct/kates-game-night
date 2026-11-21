@@ -180,6 +180,7 @@ npm run db:generate    # after a schema change
 npm run db:migrate
 ```
 
+
 GitHub Actions runs lint, typecheck, test, and build on pull requests and on `main`.
 
 Tests cover the seat math, the security-answer compare, the lockout ladder, the waiting-list promotion, and the admin email check. They do not need a database.
