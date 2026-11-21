@@ -1,0 +1,1 @@
+ALTER TABLE "game_night" ADD COLUMN "location" text DEFAULT 'Kate''s place' NOT NULL;

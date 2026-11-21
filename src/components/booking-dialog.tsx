@@ -3,12 +3,13 @@
 import { useActionState, useState, useTransition } from "react"
 import { spotsLeft } from "@/lib/capacity"
 import { displayGame } from "@/lib/game"
+import { displayLocation } from "@/lib/location"
 import { formatNightHeading } from "@/lib/start-time"
 import { HOST_NAME, firstName } from "@/lib/names"
 import type { ActionResult, BookMode, DayView } from "@/lib/types"
 import { AdminAdd } from "@/components/admin-add"
 import type { DirectoryUser } from "@/lib/admin-add"
-import { bookSpot, removeBooking, removeOwnBooking, renameGuestBooking, setNightCapacity, setNightGame, setNightOpen, setNightStartTime } from "@/server/actions"
+import { bookSpot, removeBooking, removeOwnBooking, renameGuestBooking, setNightCapacity, setNightGame, setNightLocation, setNightOpen, setNightStartTime } from "@/server/actions"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -77,7 +78,10 @@ export function BookingDialog({
             {formatNightHeading(day.date, day.timeLabel)}
           </DialogTitle>
           {day.status !== "closed" ? (
-            <p className="text-sm text-foreground">{displayGame(day.game)}</p>
+            <>
+              <p className="text-sm text-foreground">{displayGame(day.game)}</p>
+              <p className="text-sm text-foreground">{displayLocation(day.location)}</p>
+            </>
           ) : null}
           <DialogDescription>
             {day.label ? `${day.label}. ` : ""}
@@ -248,6 +252,29 @@ export function BookingDialog({
                   maxLength={80}
                   key={`${day.date}-${day.game}`}
                   defaultValue={day.game}
+                  disabled={!day.stored || busy}
+                />
+              </div>
+              <Button type="submit" variant="outline" disabled={!day.stored || busy}>
+                Save
+              </Button>
+            </form>
+            <form
+              className="flex items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const data = new FormData(event.currentTarget)
+                run(() => setNightLocation(day.date, String(data.get("location") ?? "")))
+              }}
+            >
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  name="location"
+                  maxLength={80}
+                  key={`${day.date}-${day.location}`}
+                  defaultValue={day.location}
                   disabled={!day.stored || busy}
                 />
               </div>
